@@ -13,26 +13,26 @@ description: "Deep-dive nos quatro nós do workflow: collect → analyze → pla
 %%{init: {"theme": "dark", "themeVariables": {"primaryColor": "#2d333b", "primaryBorderColor": "#6d5dfc", "primaryTextColor": "#e6edf3", "lineColor": "#8b949e", "secondaryColor": "#161b22"}}}%%
 stateDiagram-v2
     direction LR
-    [*] --> collect: InfraEvent\n(do pipeline)
+    [*] --> collect: InfraEvent
 
-    collect --> analyze: EnrichedEvent\n(+ Prometheus + K8s)
+    collect --> analyze: EnrichedEvent (Prometheus + K8s)
 
-    analyze --> plan: severity ≥ threshold\n(CRITICAL / MODERATE)
-    analyze --> [*]: severity < threshold\n(LOW / NOT_A_PROBLEM)\nlog only
+    analyze --> plan: CRITICAL ou MODERATE
+    analyze --> [*]: LOW ou NOT_A_PROBLEM (log only)
 
     plan --> notify: ActionPlan gerado
 
-    notify --> [*]: notifications_sent\n[slack, discord]
+    notify --> [*]: notifications_sent
 
     state collect {
         PrometheusCollector
         KubernetesCollector
     }
     state analyze {
-        LLM: SYSTEM_PROMPT\n+ enriched_event.summary()
+        LLM_analyzer: SYSTEM_PROMPT + enriched_event.summary()
     }
     state plan {
-        LLM: analysis.reasoning\n+ infra context
+        LLM_planner: analysis.reasoning + infra context
     }
     state notify {
         SlackNotifier

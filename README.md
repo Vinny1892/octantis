@@ -71,3 +71,10 @@ All settings are via environment variables (see `.env.example`).
 docker build -t octantis .
 docker run --env-file .env octantis
 ```
+
+## Documentation
+
+- [Overview](docs/overview.md) — architecture and design decisions
+- [Pipeline](docs/pipeline.md) — event ingestion and pre-filtering
+- [Agent](docs/agent.md) — LangGraph workflow (collect → analyze → plan → notify)
+- [Onboarding](docs/onboarding.md) — getting started guide
