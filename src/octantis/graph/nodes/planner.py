@@ -1,0 +1,121 @@
+"""Planner node: uses LLM to generate a concrete remediation action plan."""
+
+import json
+
+import structlog
+from litellm import acompletion
+
+from octantis.config import settings
+from octantis.graph.state import AgentState
+from octantis.models.action_plan import ActionPlan, ActionStep, StepType
+
+log = structlog.get_logger(__name__)
+
+SYSTEM_PROMPT = """\
+You are Octantis, an expert SRE with deep Kubernetes/EKS knowledge.
+Given an infrastructure incident analysis, generate a concrete, prioritized remediation plan.
+
+Steps should be:
+1. Immediately actionable (real kubectl/helm/shell commands where applicable)
+2. Ordered by priority (most critical first)
+3. Include expected outcomes and risks
+
+Respond ONLY with a valid JSON object matching this schema:
+{
+  "title": "short incident title",
+  "summary": "1-2 sentence summary of the issue and approach",
+  "steps": [
+    {
+      "order": 1,
+      "type": "investigate|execute|escalate|monitor|rollback",
+      "title": "step title",
+      "description": "what to do and why",
+      "command": "kubectl get pods -n namespace | optional shell command",
+      "expected_outcome": "what success looks like",
+      "risk": "any risk or side effect"
+    }
+  ],
+  "escalate_to": ["team-sre", "team-platform"],
+  "estimated_resolution_minutes": 30,
+  "runbook_url": null,
+  "grafana_dashboard_url": null
+}
+"""
+
+
+def _build_user_message(state: AgentState) -> str:
+    enriched = state["enriched_event"]
+    analysis = state["analysis"]
+
+    return f"""Generate a remediation plan for this incident:
+
+Severity: {analysis.severity} (confidence: {analysis.confidence:.0%})
+Analysis: {analysis.reasoning}
+Affected components: {', '.join(analysis.affected_components) or 'unknown'}
+Is transient: {analysis.is_transient}
+
+Infrastructure context:
+{enriched.summary}
+
+Kubernetes namespace: {enriched.original.resource.k8s_namespace or 'unknown'}
+Pod: {enriched.original.resource.k8s_pod_name or 'unknown'}
+Node: {enriched.original.resource.k8s_node_name or 'unknown'}
+Deployment: {enriched.original.resource.k8s_deployment_name or 'unknown'}
+"""
+
+
+def _get_litellm_model(provider: str, model: str) -> str:
+    if provider == "openrouter":
+        return f"openrouter/{model}"
+    return model
+
+
+async def planner_node(state: AgentState) -> AgentState:
+    """Call LLM to generate remediation action plan."""
+    event_id = state["enriched_event"].original.event_id
+    log.info("planner.start", event_id=event_id, severity=state["analysis"].severity)
+
+    model = _get_litellm_model(settings.llm.provider, settings.llm.model)
+    api_key = (
+        settings.llm.anthropic_api_key
+        if settings.llm.provider == "anthropic"
+        else settings.llm.openrouter_api_key
+    )
+
+    response = await acompletion(
+        model=model,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": _build_user_message(state)},
+        ],
+        max_tokens=settings.llm.max_tokens,
+        temperature=settings.llm.temperature,
+        api_key=api_key,
+        response_format={"type": "json_object"},
+    )
+
+    raw_content = response.choices[0].message.content
+    try:
+        data = json.loads(raw_content)
+        # Coerce step types safely
+        for step in data.get("steps", []):
+            if "type" in step and step["type"] not in StepType._value2member_map_:
+                step["type"] = StepType.INVESTIGATE.value
+        plan = ActionPlan(**data)
+    except Exception as exc:
+        log.error("planner.parse_error", error=str(exc), raw=raw_content[:300])
+        plan = ActionPlan(
+            title="Remediation plan (parse error)",
+            summary=f"LLM response could not be parsed. Review raw data manually.",
+            steps=[
+                ActionStep(
+                    order=1,
+                    type=StepType.INVESTIGATE,
+                    title="Manual investigation required",
+                    description=f"Could not parse LLM plan. Raw response: {raw_content[:500]}",
+                )
+            ],
+        )
+
+    log.info("planner.done", event_id=event_id, steps=len(plan.steps))
+    return {**state, "action_plan": plan}
