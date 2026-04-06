@@ -1,6 +1,6 @@
 """Event models for raw and enriched infrastructure events."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -25,7 +25,7 @@ class MetricDataPoint(BaseModel):
     value: float
     unit: str | None = None
     attributes: dict[str, Any] = Field(default_factory=dict)
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class LogRecord(BaseModel):
@@ -35,7 +35,7 @@ class LogRecord(BaseModel):
     severity_text: str | None = None
     severity_number: int | None = None
     attributes: dict[str, Any] = Field(default_factory=dict)
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class InfraEvent(BaseModel):
@@ -48,70 +48,58 @@ class InfraEvent(BaseModel):
     metrics: list[MetricDataPoint] = Field(default_factory=list)
     logs: list[LogRecord] = Field(default_factory=list)
     raw_payload: dict[str, Any] = Field(default_factory=dict)
-    received_at: datetime = Field(default_factory=datetime.utcnow)
+    received_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
-class PrometheusContext(BaseModel):
-    """Additional Prometheus metrics fetched for context."""
+class MCPQueryRecord(BaseModel):
+    """Record of a single MCP query executed during investigation."""
 
-    cpu_usage_percent: float | None = None
-    memory_usage_percent: float | None = None
-    error_rate_5m: float | None = None
-    request_latency_p99_ms: float | None = None
-    pod_restart_count: int | None = None
-    custom_metrics: dict[str, float] = Field(default_factory=dict)
-    queries_run: list[str] = Field(default_factory=list)
-
-
-class KubernetesContext(BaseModel):
-    """Additional K8s state fetched for context."""
-
-    pod_phase: str | None = None
-    pod_conditions: list[dict[str, Any]] = Field(default_factory=list)
-    pod_restart_count: int | None = None
-    node_conditions: list[dict[str, Any]] = Field(default_factory=list)
-    deployment_available_replicas: int | None = None
-    deployment_desired_replicas: int | None = None
-    recent_events: list[dict[str, Any]] = Field(default_factory=list)
-    node_pressure: dict[str, bool] = Field(default_factory=dict)
+    tool_name: str
+    query: str
+    result_summary: str
+    duration_ms: float
+    datasource: str  # "promql", "logql", "k8s"
+    error: str | None = None
 
 
-class EnrichedEvent(BaseModel):
-    """InfraEvent enriched with Prometheus + K8s context."""
+class InvestigationResult(BaseModel):
+    """Output of the investigate node — replaces EnrichedEvent."""
 
-    original: InfraEvent
-    prometheus: PrometheusContext = Field(default_factory=PrometheusContext)
-    kubernetes: KubernetesContext = Field(default_factory=KubernetesContext)
-    enriched_at: datetime = Field(default_factory=datetime.utcnow)
+    original_event: InfraEvent
+    queries_executed: list[MCPQueryRecord] = Field(default_factory=list)
+    evidence_summary: str = ""
+    mcp_servers_used: list[str] = Field(default_factory=list)
+    mcp_degraded: bool = False
+    budget_exhausted: bool = False
+    investigation_duration_s: float = 0.0
+    tokens_input: int = 0
+    tokens_output: int = 0
 
     @property
     def summary(self) -> str:
         """Human-readable summary for LLM context."""
         parts = [
-            f"Event: {self.original.event_type} from {self.original.source}",
-            f"Service: {self.original.resource.service_name or 'unknown'}",
-            f"Namespace: {self.original.resource.k8s_namespace or 'unknown'}",
+            f"Event: {self.original_event.event_type} from {self.original_event.source}",
+            f"Service: {self.original_event.resource.service_name or 'unknown'}",
+            f"Namespace: {self.original_event.resource.k8s_namespace or 'unknown'}",
         ]
-        if self.original.resource.k8s_pod_name:
-            parts.append(f"Pod: {self.original.resource.k8s_pod_name}")
-        if self.original.metrics:
+        if self.original_event.resource.k8s_pod_name:
+            parts.append(f"Pod: {self.original_event.resource.k8s_pod_name}")
+        if self.original_event.metrics:
             metrics_str = ", ".join(
-                f"{m.name}={m.value}{m.unit or ''}" for m in self.original.metrics[:5]
+                f"{m.name}={m.value}{m.unit or ''}" for m in self.original_event.metrics[:5]
             )
-            parts.append(f"Metrics: {metrics_str}")
-        if self.original.logs:
-            parts.append(f"Latest log: {self.original.logs[-1].body[:200]}")
-        if self.prometheus.cpu_usage_percent is not None:
-            parts.append(f"CPU: {self.prometheus.cpu_usage_percent:.1f}%")
-        if self.prometheus.memory_usage_percent is not None:
-            parts.append(f"Memory: {self.prometheus.memory_usage_percent:.1f}%")
-        if self.prometheus.error_rate_5m is not None:
-            parts.append(f"Error rate (5m): {self.prometheus.error_rate_5m:.2f}")
-        if self.kubernetes.pod_phase:
-            parts.append(f"Pod phase: {self.kubernetes.pod_phase}")
-        if self.kubernetes.deployment_available_replicas is not None:
+            parts.append(f"Trigger metrics: {metrics_str}")
+        if self.original_event.logs:
+            parts.append(f"Trigger log: {self.original_event.logs[-1].body[:200]}")
+        if self.evidence_summary:
+            parts.append(f"Investigation: {self.evidence_summary[:500]}")
+        if self.queries_executed:
+            parts.append(f"Queries: {len(self.queries_executed)} MCP queries executed")
+        if self.mcp_degraded:
             parts.append(
-                f"Replicas: {self.kubernetes.deployment_available_replicas}"
-                f"/{self.kubernetes.deployment_desired_replicas}"
+                "WARNING: MCP servers were unavailable — analysis based on trigger data only"
             )
+        if self.budget_exhausted:
+            parts.append("NOTE: Query budget exhausted — analysis based on partial data")
         return "\n".join(parts)

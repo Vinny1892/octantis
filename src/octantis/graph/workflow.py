@@ -1,17 +1,25 @@
 """LangGraph workflow definition for Octantis."""
 
+from __future__ import annotations
+
+from functools import partial
+from typing import TYPE_CHECKING
+
 import structlog
 from langgraph.graph import END, START, StateGraph
 
 from octantis.config import settings
 from octantis.graph.nodes import (
     analyzer_node,
-    collector_node,
+    investigate_node,
     notifier_node,
     planner_node,
 )
 from octantis.graph.state import AgentState
 from octantis.models.analysis import Severity
+
+if TYPE_CHECKING:
+    from octantis.mcp_client import MCPClientManager
 
 log = structlog.get_logger(__name__)
 
@@ -58,19 +66,26 @@ def _should_notify(state: AgentState) -> str:
         return "end"
 
 
-def build_workflow() -> StateGraph:
-    """Build and compile the LangGraph workflow."""
+def build_workflow(mcp_manager: MCPClientManager) -> StateGraph:
+    """Build and compile the LangGraph workflow.
+
+    Args:
+        mcp_manager: The MCP client manager providing tools for investigation.
+    """
     graph = StateGraph(AgentState)
 
+    # Bind mcp_manager to investigate_node
+    bound_investigate = partial(investigate_node, mcp_manager=mcp_manager)
+
     # Add nodes
-    graph.add_node("collect", collector_node)
+    graph.add_node("investigate", bound_investigate)
     graph.add_node("analyze", analyzer_node)
     graph.add_node("plan", planner_node)
     graph.add_node("notify", notifier_node)
 
-    # Edges: linear flow with conditional branch after analyze
-    graph.add_edge(START, "collect")
-    graph.add_edge("collect", "analyze")
+    # Edges: investigate → analyze → conditional → plan → notify → END
+    graph.add_edge(START, "investigate")
+    graph.add_edge("investigate", "analyze")
     graph.add_conditional_edges(
         "analyze",
         _should_notify,

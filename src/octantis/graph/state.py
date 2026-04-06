@@ -2,17 +2,17 @@
 
 from typing import TypedDict
 
-from octantis.models import ActionPlan, EnrichedEvent, InfraEvent, SeverityAnalysis
+from octantis.models import ActionPlan, InfraEvent, InvestigationResult, SeverityAnalysis
 
 
 class AgentState(TypedDict, total=False):
     """Shared state passed between graph nodes."""
 
-    # Input: raw event from Redpanda
+    # Input: raw event from OTLP receiver
     event: InfraEvent
 
-    # After collector node
-    enriched_event: EnrichedEvent
+    # After investigate node (MCP-driven investigation)
+    investigation: InvestigationResult
 
     # After analyzer node
     analysis: SeverityAnalysis

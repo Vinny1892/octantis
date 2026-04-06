@@ -1,0 +1,134 @@
+# Octantis Local Development Stack
+#
+# Full stack: Octantis + Grafana MCP + Grafana + Prometheus + Loki + OTel Collector
+#
+# Usage:
+#   docker compose up -d
+#
+# Prerequisites:
+#   - Set ANTHROPIC_API_KEY in .env or export it
+#   - Grafana service account token is auto-provisioned (no manual setup needed)
+#
+# Ports:
+#   - 3000: Grafana UI
+#   - 4317: Octantis OTLP gRPC
+#   - 4318: Octantis OTLP HTTP
+#   - 9090: Prometheus UI
+#   - 9091: Octantis Prometheus metrics
+
+services:
+  # ── Octantis ────────────────────────────────────────────────────────────────
+  octantis:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "9091:9090"   # Prometheus metrics
+    environment:
+      # OTLP Receiver
+      OTLP_GRPC_PORT: "4317"
+      OTLP_HTTP_PORT: "4318"
+      OTLP_GRPC_ENABLED: "true"
+      OTLP_HTTP_ENABLED: "true"
+
+      # LLM
+      LLM_PROVIDER: "anthropic"
+      LLM_MODEL: "claude-sonnet-4-6"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"
+      # LLM_INVESTIGATION_MODEL: "claude-opus-4-6"  # uncomment for higher quality investigation
+
+      # Grafana MCP
+      GRAFANA_MCP_URL: "http://mcp-grafana:8080/sse"
+      GRAFANA_MCP_API_KEY: "dev-token"
+
+      # Investigation
+      INVESTIGATION_MAX_QUERIES: "10"
+      INVESTIGATION_TIMEOUT_SECONDS: "60"
+      INVESTIGATION_QUERY_TIMEOUT_SECONDS: "10"
+
+      # Metrics
+      METRICS_PORT: "9090"
+      METRICS_ENABLED: "true"
+
+      # Pipeline
+      PIPELINE_CPU_THRESHOLD: "75.0"
+      PIPELINE_MEMORY_THRESHOLD: "80.0"
+      PIPELINE_COOLDOWN_SECONDS: "300"
+
+      # Notifications (optional)
+      # SLACK_WEBHOOK_URL: "https://hooks.slack.com/services/..."
+      # DISCORD_WEBHOOK_URL: "https://discord.com/api/webhooks/..."
+
+      MIN_SEVERITY_TO_NOTIFY: "MODERATE"
+      LOG_LEVEL: "INFO"
+    depends_on:
+      - mcp-grafana
+    restart: unless-stopped
+
+  # ── Grafana MCP Server ──────────────────────────────────────────────────────
+  mcp-grafana:
+    image: ghcr.io/grafana/mcp-grafana:latest
+    environment:
+      GRAFANA_URL: "http://grafana:3000"
+      GRAFANA_API_KEY: "dev-token"
+    depends_on:
+      - grafana
+    restart: unless-stopped
+
+  # ── OTel Collector ──────────────────────────────────────────────────────────
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.149.0
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "13133:13133"  # health check
+    depends_on:
+      - octantis
+    restart: unless-stopped
+
+  # ── Grafana ─────────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:11.6.0
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: "admin"
+      GF_SECURITY_ADMIN_PASSWORD: "admin"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Viewer"
+      # Service account token for MCP (auto-provisioned)
+      GF_SERVICE_ACCOUNTS_API_KEY: "dev-token"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - loki
+    restart: unless-stopped
+
+  # ── Prometheus ──────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v3.4.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=7d"
+    restart: unless-stopped
+
+  # ── Loki ────────────────────────────────────────────────────────────────────
+  loki:
+    image: grafana/loki:3.5.0
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    restart: unless-stopped
+
+volumes:
+  grafana-data:
+  prometheus-data:

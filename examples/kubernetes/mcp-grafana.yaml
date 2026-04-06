@@ -1,0 +1,81 @@
+# Grafana MCP Server for Kubernetes
+#
+# Prerequisites:
+#   1. Grafana deployed and accessible within the cluster
+#   2. Grafana service account token created:
+#      kubectl create secret generic octantis-secrets \
+#        --namespace monitoring \
+#        --from-literal=GRAFANA_MCP_API_KEY=glsa_...
+#      (if not already created with octantis.yaml)
+#
+# Deploy:
+#   kubectl apply -f mcp-grafana.yaml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-grafana
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: mcp-grafana
+    app.kubernetes.io/part-of: octantis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mcp-grafana
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mcp-grafana
+    spec:
+      containers:
+        - name: mcp-grafana
+          image: ghcr.io/grafana/mcp-grafana:latest
+          ports:
+            - name: sse
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: GRAFANA_URL
+              value: "http://grafana.monitoring.svc.cluster.local:3000"
+            - name: GRAFANA_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: octantis-secrets
+                  key: GRAFANA_MCP_API_KEY
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          livenessProbe:
+            tcpSocket:
+              port: sse
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            tcpSocket:
+              port: sse
+            initialDelaySeconds: 5
+            periodSeconds: 10
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-grafana
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: mcp-grafana
+    app.kubernetes.io/part-of: octantis
+spec:
+  selector:
+    app.kubernetes.io/name: mcp-grafana
+  ports:
+    - name: sse
+      port: 8080
+      targetPort: sse
+      protocol: TCP

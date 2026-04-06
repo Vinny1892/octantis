@@ -44,8 +44,9 @@ Respond ONLY with a valid JSON object matching this schema:
 
 
 def _build_user_message(state: AgentState) -> str:
-    enriched = state["enriched_event"]
+    investigation = state["investigation"]
     analysis = state["analysis"]
+    event = investigation.original_event
 
     return f"""Generate a remediation plan for this incident:
 
@@ -54,13 +55,13 @@ Analysis: {analysis.reasoning}
 Affected components: {", ".join(analysis.affected_components) or "unknown"}
 Is transient: {analysis.is_transient}
 
-Infrastructure context:
-{enriched.summary}
+Investigation summary:
+{investigation.evidence_summary[:1000]}
 
-Kubernetes namespace: {enriched.original.resource.k8s_namespace or "unknown"}
-Pod: {enriched.original.resource.k8s_pod_name or "unknown"}
-Node: {enriched.original.resource.k8s_node_name or "unknown"}
-Deployment: {enriched.original.resource.k8s_deployment_name or "unknown"}
+Kubernetes namespace: {event.resource.k8s_namespace or "unknown"}
+Pod: {event.resource.k8s_pod_name or "unknown"}
+Node: {event.resource.k8s_node_name or "unknown"}
+Deployment: {event.resource.k8s_deployment_name or "unknown"}
 """
 
 
@@ -72,7 +73,7 @@ def _get_litellm_model(provider: str, model: str) -> str:
 
 async def planner_node(state: AgentState) -> AgentState:
     """Call LLM to generate remediation action plan."""
-    event_id = state["enriched_event"].original.event_id
+    event_id = state["investigation"].original_event.event_id
     log.info("planner.start", event_id=event_id, severity=state["analysis"].severity)
 
     model = _get_litellm_model(settings.llm.provider, settings.llm.model)
@@ -93,6 +94,16 @@ async def planner_node(state: AgentState) -> AgentState:
         api_key=api_key,
         response_format={"type": "json_object"},
     )
+
+    usage = response.get("usage", {})
+    input_tokens = getattr(usage, "prompt_tokens", 0)
+    output_tokens = getattr(usage, "completion_tokens", 0)
+
+    from octantis.metrics import LLM_TOKENS_INPUT, LLM_TOKENS_OUTPUT, LLM_TOKENS_TOTAL
+
+    LLM_TOKENS_INPUT.labels(node="plan").inc(input_tokens)
+    LLM_TOKENS_OUTPUT.labels(node="plan").inc(output_tokens)
+    LLM_TOKENS_TOTAL.labels(node="plan").inc(input_tokens + output_tokens)
 
     raw_content = response.choices[0].message.content
     try:

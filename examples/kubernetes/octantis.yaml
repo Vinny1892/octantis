@@ -1,0 +1,156 @@
+# Octantis Kubernetes Deployment
+#
+# Prerequisites:
+#   1. Create namespace: kubectl create namespace monitoring
+#   2. Create secret with API keys:
+#      kubectl create secret generic octantis-secrets \
+#        --namespace monitoring \
+#        --from-literal=ANTHROPIC_API_KEY=sk-ant-... \
+#        --from-literal=GRAFANA_MCP_API_KEY=glsa_...
+#   3. Deploy Grafana MCP server (see mcp-grafana.yaml)
+#   4. Grafana with Prometheus + Loki datasources configured
+#
+# Deploy:
+#   kubectl apply -f octantis.yaml
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: octantis-config
+  namespace: monitoring
+data:
+  # OTLP Receiver
+  OTLP_GRPC_PORT: "4317"
+  OTLP_HTTP_PORT: "4318"
+  OTLP_GRPC_ENABLED: "true"
+  OTLP_HTTP_ENABLED: "true"
+  OTLP_QUEUE_MAX_SIZE: "1000"
+
+  # LLM
+  LLM_PROVIDER: "anthropic"
+  LLM_MODEL: "claude-sonnet-4-6"
+  # Uncomment for higher quality investigation at higher cost:
+  # LLM_INVESTIGATION_MODEL: "claude-opus-4-6"
+
+  # Grafana MCP
+  GRAFANA_MCP_URL: "http://mcp-grafana.monitoring.svc.cluster.local:8080/sse"
+
+  # K8s MCP (optional, recommended)
+  # K8S_MCP_URL: "http://mcp-k8s.monitoring.svc.cluster.local:8080/sse"
+
+  # Investigation
+  INVESTIGATION_MAX_QUERIES: "10"
+  INVESTIGATION_TIMEOUT_SECONDS: "60"
+  INVESTIGATION_QUERY_TIMEOUT_SECONDS: "10"
+
+  # Metrics
+  METRICS_PORT: "9090"
+  METRICS_ENABLED: "true"
+
+  # Pipeline
+  PIPELINE_CPU_THRESHOLD: "75.0"
+  PIPELINE_MEMORY_THRESHOLD: "80.0"
+  PIPELINE_COOLDOWN_SECONDS: "300"
+
+  # Agent behavior
+  MIN_SEVERITY_TO_NOTIFY: "MODERATE"
+  LOG_LEVEL: "INFO"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: octantis
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: octantis
+    app.kubernetes.io/part-of: octantis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: octantis
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: octantis
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: octantis
+          image: ghcr.io/YOUR_ORG/octantis:latest  # Replace with your image
+          ports:
+            - name: otlp-grpc
+              containerPort: 4317
+              protocol: TCP
+            - name: otlp-http
+              containerPort: 4318
+              protocol: TCP
+            - name: metrics
+              containerPort: 9090
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: octantis-config
+          env:
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: octantis-secrets
+                  key: ANTHROPIC_API_KEY
+            - name: GRAFANA_MCP_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: octantis-secrets
+                  key: GRAFANA_MCP_API_KEY
+            # Uncomment for notifications:
+            # - name: SLACK_WEBHOOK_URL
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: octantis-secrets
+            #       key: SLACK_WEBHOOK_URL
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          livenessProbe:
+            tcpSocket:
+              port: otlp-grpc
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            tcpSocket:
+              port: otlp-grpc
+            initialDelaySeconds: 5
+            periodSeconds: 10
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: octantis
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: octantis
+spec:
+  selector:
+    app.kubernetes.io/name: octantis
+  ports:
+    - name: otlp-grpc
+      port: 4317
+      targetPort: otlp-grpc
+      protocol: TCP
+    - name: otlp-http
+      port: 4318
+      targetPort: otlp-http
+      protocol: TCP
+    - name: metrics
+      port: 9090
+      targetPort: metrics
+      protocol: TCP

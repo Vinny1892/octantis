@@ -1,0 +1,65 @@
+# OTel Collector config for local development
+# Collector version: otel/opentelemetry-collector-contrib:0.149.0
+#
+# Receives OTLP from instrumented apps and host metrics,
+# then forwards everything to Octantis.
+
+receivers:
+  # Accept OTLP from instrumented workloads
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+  # Host metrics (CPU, memory, disk, network)
+  hostmetrics:
+    collection_interval: 15s
+    scrapers:
+      cpu:
+      memory:
+      disk:
+      network:
+
+processors:
+  # Add resource attributes
+  resource:
+    attributes:
+      - key: service.name
+        value: "local-dev"
+        action: upsert
+
+  batch:
+    send_batch_size: 256
+    timeout: 10s
+
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 192
+    spike_limit_mib: 48
+
+exporters:
+  # Forward to Octantis OTLP receiver
+  otlp:
+    endpoint: octantis:4317
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    metrics:
+      receivers: [hostmetrics, otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp]
+
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp]
+
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      address: 0.0.0.0:8888

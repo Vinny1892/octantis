@@ -16,7 +16,7 @@ You are Octantis, an expert SRE/infrastructure analyst.
 Your job is to assess infrastructure events from a Kubernetes/EKS environment and
 classify their real severity — going beyond simple threshold breaches.
 
-You will receive enriched telemetry data (metrics, logs, K8s state, Prometheus context)
+You will receive investigation data (MCP query results, evidence summary, trigger event)
 and must determine the TRUE operational impact.
 
 Severity levels:
@@ -40,35 +40,56 @@ Respond ONLY with a valid JSON object matching this schema:
 """
 
 
-def _build_user_message(enriched_event) -> str:
-    return f"""Analyze this infrastructure event:
+def _build_user_message(state: AgentState) -> str:
+    investigation = state["investigation"]
+    event = investigation.original_event
 
-{enriched_event.summary}
+    parts = [
+        "Analyze this infrastructure event based on the investigation data:",
+        "",
+        investigation.summary,
+    ]
 
-Raw metrics:
-{json.dumps([m.model_dump() for m in enriched_event.original.metrics], default=str, indent=2)}
+    if investigation.queries_executed:
+        parts.append("\n## MCP Query Results")
+        for qr in investigation.queries_executed:
+            status = f" [ERROR: {qr.error}]" if qr.error else ""
+            parts.append(f"- **{qr.tool_name}** ({qr.datasource}, {qr.duration_ms:.0f}ms){status}")
+            parts.append(f"  Query: {qr.query[:200]}")
+            parts.append(f"  Result: {qr.result_summary[:300]}")
 
-Recent logs:
-{json.dumps([rec.model_dump() for rec in enriched_event.original.logs[-5:]], default=str, indent=2)}
+    if investigation.evidence_summary:
+        parts.append(f"\n## Investigation Summary\n{investigation.evidence_summary}")
 
-Kubernetes context:
-{enriched_event.kubernetes.model_dump_json(indent=2)}
+    if event.metrics:
+        parts.append("\n## Raw Trigger Metrics")
+        parts.append(json.dumps([m.model_dump() for m in event.metrics], default=str, indent=2))
 
-Prometheus context:
-{enriched_event.prometheus.model_dump_json(indent=2)}
-"""
+    if event.logs:
+        parts.append("\n## Recent Trigger Logs")
+        parts.append(
+            json.dumps([rec.model_dump() for rec in event.logs[-5:]], default=str, indent=2)
+        )
+
+    if investigation.mcp_degraded:
+        parts.append(
+            "\n**WARNING**: MCP servers were unavailable during investigation. "
+            "Analysis is based on trigger data only and may be imprecise."
+        )
+
+    return "\n".join(parts)
 
 
 def _get_litellm_model(provider: str, model: str) -> str:
     if provider == "openrouter":
         return f"openrouter/{model}"
-    return model  # anthropic models work directly
+    return model
 
 
 async def analyzer_node(state: AgentState) -> AgentState:
     """Call LLM to classify event severity."""
-    enriched = state["enriched_event"]
-    event_id = enriched.original.event_id
+    investigation = state["investigation"]
+    event_id = investigation.original_event.event_id
 
     log.info("analyzer.start", event_id=event_id)
 
@@ -84,13 +105,23 @@ async def analyzer_node(state: AgentState) -> AgentState:
         model=model,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": _build_user_message(enriched)},
+            {"role": "user", "content": _build_user_message(state)},
         ],
         max_tokens=settings.llm.max_tokens,
         temperature=settings.llm.temperature,
         api_key=api_key,
         response_format={"type": "json_object"},
     )
+
+    usage = response.get("usage", {})
+    input_tokens = getattr(usage, "prompt_tokens", 0)
+    output_tokens = getattr(usage, "completion_tokens", 0)
+
+    from octantis.metrics import LLM_TOKENS_INPUT, LLM_TOKENS_OUTPUT, LLM_TOKENS_TOTAL
+
+    LLM_TOKENS_INPUT.labels(node="analyze").inc(input_tokens)
+    LLM_TOKENS_OUTPUT.labels(node="analyze").inc(output_tokens)
+    LLM_TOKENS_TOTAL.labels(node="analyze").inc(input_tokens + output_tokens)
 
     raw_content = response.choices[0].message.content
     try:

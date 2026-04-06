@@ -12,13 +12,23 @@ log = structlog.get_logger(__name__)
 
 async def notifier_node(state: AgentState) -> AgentState:
     """Send notifications to configured channels."""
-    event_id = state["enriched_event"].original.event_id
+    investigation = state["investigation"]
+    event_id = investigation.original_event.event_id
     analysis = state["analysis"]
     plan = state.get("action_plan")
 
     log.info("notifier.start", event_id=event_id, severity=analysis.severity)
 
     notifications_sent: list[str] = []
+
+    # Build degradation warning if MCP was unavailable
+    degradation_warning = ""
+    if investigation.mcp_degraded:
+        degradation_warning = (
+            "\n\n:warning: **MCP Degradation Warning**: One or more MCP servers were "
+            "unavailable during investigation. This analysis is based on trigger event "
+            "data only and may not be fully accurate. Check MCP server connectivity."
+        )
 
     if settings.slack.enabled:
         try:
@@ -28,9 +38,10 @@ async def notifier_node(state: AgentState) -> AgentState:
                 channel=settings.slack.channel,
             )
             await slack.send(
-                enriched_event=state["enriched_event"],
+                investigation=investigation,
                 analysis=analysis,
                 action_plan=plan,
+                extra_text=degradation_warning,
             )
             notifications_sent.append("slack")
             log.info("notifier.slack.sent", event_id=event_id)
@@ -41,9 +52,10 @@ async def notifier_node(state: AgentState) -> AgentState:
         try:
             discord = DiscordNotifier(webhook_url=settings.discord.webhook_url)
             await discord.send(
-                enriched_event=state["enriched_event"],
+                investigation=investigation,
                 analysis=analysis,
                 action_plan=plan,
+                extra_text=degradation_warning,
             )
             notifications_sent.append("discord")
             log.info("notifier.discord.sent", event_id=event_id)

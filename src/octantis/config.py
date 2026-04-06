@@ -33,18 +33,39 @@ class LLMSettings(BaseSettings):
     )
 
 
-class PrometheusSettings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="PROMETHEUS_", extra="ignore")
+class GrafanaMCPSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="GRAFANA_MCP_", extra="ignore")
 
-    url: str = "http://prometheus:9090"
-    timeout: int = 30
+    url: str | None = None
+    api_key: str | None = None
 
 
-class KubernetesSettings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="K8S_", extra="ignore")
+class K8sMCPSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="K8S_MCP_", extra="ignore")
 
-    in_cluster: bool = False
-    kubeconfig: str | None = None
+    url: str | None = None
+
+
+class InvestigationSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="INVESTIGATION_", extra="ignore")
+
+    model: str | None = Field(default=None, alias="LLM_INVESTIGATION_MODEL")
+    max_queries: int = 10
+    timeout_seconds: int = 60
+    query_timeout_seconds: int = 10
+
+    model_config = SettingsConfigDict(
+        env_prefix="INVESTIGATION_",
+        extra="ignore",
+        populate_by_name=True,
+    )
+
+
+class MetricsSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="METRICS_", extra="ignore")
+
+    port: int = 9090
+    enabled: bool = True
 
 
 class SlackSettings(BaseSettings):
@@ -70,34 +91,24 @@ class DiscordSettings(BaseSettings):
 
 
 class PipelineSettings(BaseSettings):
-    """Controls the pre-LLM filtering, batching, and sampling pipeline."""
+    """Controls the trigger filter and fingerprint cooldown pipeline."""
 
     model_config = SettingsConfigDict(env_prefix="PIPELINE_", extra="ignore")
 
-    # Pre-filter thresholds
+    # Trigger filter thresholds
     cpu_threshold: float = 75.0  # % — pass if CPU >= this
     memory_threshold: float = 80.0  # % — pass if memory >= this
     error_rate_threshold: float = 0.01  # req/s — pass if error rate >= this
     # Comma-separated regex patterns for known-benign sources/logs to always drop
     benign_patterns: str = ""
-    # Comma-separated event types to allow (empty = allow all)
-    allowed_event_types: str = ""
 
-    # Batcher
-    batch_window_seconds: float = 30.0
-    batch_max_size: int = 20
-
-    # Sampler cooldown
-    sampler_cooldown_seconds: float = 300.0  # 5 min default
-    sampler_max_entries: int = 1000
+    # Fingerprint cooldown
+    cooldown_seconds: float = 300.0  # 5 min default
+    cooldown_max_entries: int = 1000
 
     @property
     def benign_patterns_list(self) -> list[str]:
         return [p.strip() for p in self.benign_patterns.split(",") if p.strip()]
-
-    @property
-    def allowed_event_types_list(self) -> list[str]:
-        return [t.strip() for t in self.allowed_event_types.split(",") if t.strip()]
 
 
 class Settings(BaseSettings):
@@ -112,8 +123,10 @@ class Settings(BaseSettings):
 
     otlp: OTLPSettings = Field(default_factory=OTLPSettings)
     llm: LLMSettings = Field(default_factory=LLMSettings)
-    prometheus: PrometheusSettings = Field(default_factory=PrometheusSettings)
-    kubernetes: KubernetesSettings = Field(default_factory=KubernetesSettings)
+    grafana_mcp: GrafanaMCPSettings = Field(default_factory=GrafanaMCPSettings)
+    k8s_mcp: K8sMCPSettings = Field(default_factory=K8sMCPSettings)
+    investigation: InvestigationSettings = Field(default_factory=InvestigationSettings)
+    metrics: MetricsSettings = Field(default_factory=MetricsSettings)
     slack: SlackSettings = Field(default_factory=SlackSettings)
     discord: DiscordSettings = Field(default_factory=DiscordSettings)
     pipeline: PipelineSettings = Field(default_factory=PipelineSettings)

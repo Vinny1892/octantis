@@ -7,7 +7,7 @@ import structlog
 
 from octantis.models.action_plan import ActionPlan
 from octantis.models.analysis import Severity, SeverityAnalysis
-from octantis.models.event import EnrichedEvent
+from octantis.models.event import InvestigationResult
 
 log = structlog.get_logger(__name__)
 
@@ -27,12 +27,14 @@ _SEVERITY_EMOJI = {
 
 
 def _build_blocks(
-    enriched: EnrichedEvent,
+    investigation: InvestigationResult,
     analysis: SeverityAnalysis,
     plan: ActionPlan | None,
+    extra_text: str = "",
 ) -> list[dict[str, Any]]:
-    svc = enriched.original.resource.service_name or "unknown"
-    ns = enriched.original.resource.k8s_namespace or "unknown"
+    event = investigation.original_event
+    svc = event.resource.service_name or "unknown"
+    ns = event.resource.k8s_namespace or "unknown"
     emoji = _SEVERITY_EMOJI[analysis.severity]
 
     blocks: list[dict[str, Any]] = [
@@ -80,25 +82,16 @@ def _build_blocks(
             }
         )
 
-    # Metrics context
-    prom = enriched.prometheus
-    metric_lines = []
-    if prom.cpu_usage_percent is not None:
-        metric_lines.append(f"CPU: {prom.cpu_usage_percent:.1f}%")
-    if prom.memory_usage_percent is not None:
-        metric_lines.append(f"Memory: {prom.memory_usage_percent:.1f}%")
-    if prom.error_rate_5m is not None:
-        metric_lines.append(f"Error rate (5m): {prom.error_rate_5m:.3f} req/s")
-    if prom.request_latency_p99_ms is not None:
-        metric_lines.append(f"P99 latency: {prom.request_latency_p99_ms:.0f}ms")
-
-    if metric_lines:
+    # Investigation context
+    if investigation.queries_executed:
+        queries_count = len(investigation.queries_executed)
+        duration = investigation.investigation_duration_s
         blocks.append(
             {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": "*Metrics:*\n" + " | ".join(metric_lines),
+                    "text": f"*Investigation:* {queries_count} MCP queries in {duration:.1f}s",
                 },
             }
         )
@@ -114,7 +107,7 @@ def _build_blocks(
                 },
             }
         )
-        for step in plan.steps[:5]:  # limit to 5 steps for readability
+        for step in plan.steps[:5]:
             step_text = (
                 f"*{step.order}. [{step.type.value.upper()}] {step.title}*\n{step.description}"
             )
@@ -138,6 +131,15 @@ def _build_blocks(
                 }
             )
 
+    # MCP degradation warning
+    if extra_text:
+        blocks.append(
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": extra_text.strip()},
+            }
+        )
+
     blocks.append({"type": "divider"})
     blocks.append(
         {
@@ -145,7 +147,7 @@ def _build_blocks(
             "elements": [
                 {
                     "type": "mrkdwn",
-                    "text": f"Event ID: `{enriched.original.event_id}` | Source: {enriched.original.source} | Octantis",
+                    "text": f"Event ID: `{event.event_id}` | Source: {event.source} | Octantis",
                 }
             ],
         }
@@ -167,11 +169,12 @@ class SlackNotifier:
 
     async def send(
         self,
-        enriched_event: EnrichedEvent,
+        investigation: InvestigationResult,
         analysis: SeverityAnalysis,
         action_plan: ActionPlan | None = None,
+        extra_text: str = "",
     ) -> None:
-        blocks = _build_blocks(enriched_event, analysis, action_plan)
+        blocks = _build_blocks(investigation, analysis, action_plan, extra_text)
         color = _SEVERITY_COLORS[analysis.severity]
 
         if self._webhook_url:

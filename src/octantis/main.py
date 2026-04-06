@@ -8,7 +8,8 @@ import structlog
 
 from octantis.config import settings
 from octantis.graph.workflow import build_workflow
-from octantis.pipeline import EventBatcher, PreFilter, Sampler
+from octantis.mcp_client import MCPClientManager
+from octantis.pipeline import FingerprintCooldown, TriggerFilter
 from octantis.receivers import OTLPReceiver
 
 log = structlog.get_logger(__name__)
@@ -33,35 +34,45 @@ def _configure_logging() -> None:
 
 
 def _build_pipeline():
-    """Instantiate pre-filter, batcher, and sampler from settings."""
+    """Instantiate trigger filter and fingerprint cooldown from settings."""
     cfg = settings.pipeline
 
-    pre_filter = PreFilter.default(
+    trigger_filter = TriggerFilter.default(
         cpu_threshold=cfg.cpu_threshold,
         memory_threshold=cfg.memory_threshold,
         error_rate_threshold=cfg.error_rate_threshold,
         benign_patterns=cfg.benign_patterns_list,
-        allowed_event_types=cfg.allowed_event_types_list,
     )
-    batcher = EventBatcher(
-        window_seconds=cfg.batch_window_seconds,
-        max_batch_size=cfg.batch_max_size,
+    cooldown = FingerprintCooldown(
+        cooldown_seconds=cfg.cooldown_seconds,
+        max_entries=cfg.cooldown_max_entries,
     )
-    sampler = Sampler(
-        cooldown_seconds=cfg.sampler_cooldown_seconds,
-        max_entries=cfg.sampler_max_entries,
-    )
-    return pre_filter, batcher, sampler
+    return trigger_filter, cooldown
 
 
 async def run() -> None:
     """Main async run loop."""
     _configure_logging()
-    log.info("octantis.starting", version="0.1.0")
+    log.info("octantis.starting", version="0.2.0")
 
-    workflow = build_workflow()
+    # Start metrics server
+    if settings.metrics.enabled:
+        from octantis.metrics import start_metrics_server
+
+        start_metrics_server(settings.metrics.port)
+        log.info("octantis.metrics.started", port=settings.metrics.port)
+
+    # Initialize MCP client
+    mcp_manager = MCPClientManager(
+        grafana_settings=settings.grafana_mcp,
+        k8s_settings=settings.k8s_mcp,
+        investigation_settings=settings.investigation,
+    )
+    await mcp_manager.connect()
+
+    workflow = build_workflow(mcp_manager)
     consumer = OTLPReceiver(settings.otlp)
-    pre_filter, batcher, sampler = _build_pipeline()
+    trigger_filter, cooldown = _build_pipeline()
 
     stop_event = asyncio.Event()
 
@@ -77,64 +88,68 @@ async def run() -> None:
         "octantis.ready",
         grpc_port=settings.otlp.grpc_port if settings.otlp.grpc_enabled else None,
         http_port=settings.otlp.http_port if settings.otlp.http_enabled else None,
-        batch_window_s=settings.pipeline.batch_window_seconds,
-        sampler_cooldown_s=settings.pipeline.sampler_cooldown_seconds,
+        mcp_degraded=mcp_manager.is_degraded,
+        cooldown_s=settings.pipeline.cooldown_seconds,
     )
 
-    # ── Pipeline: Consumer → Pre-filter → Batcher → Sampler → LLM ──────────
+    # ── Pipeline: Consumer → TriggerFilter → Cooldown → Workflow ──────────
     #
-    # 1. Pre-filter drops obviously benign events before batching
-    #    (avoids polluting batches with health checks / boring metrics)
-    # 2. Batcher accumulates events per workload and merges them into
-    #    one context-rich event before calling the LLM
-    # 3. Sampler suppresses identical fingerprints within the cooldown
-    #    window to avoid repeated LLM calls for the same ongoing issue
+    # 1. TriggerFilter drops obviously benign events (health checks, boring metrics)
+    # 2. Cooldown suppresses identical fingerprints within the cooldown window
+    # 3. Workflow: investigate (MCP tools) → analyze → plan → notify
 
-    async def _filtered_stream():
-        async for event in consumer.events():
-            if stop_event.is_set():
-                return
-            if pre_filter.should_analyze(event):
-                yield event
-            # else: silently dropped — logged inside PreFilter at DEBUG level
+    from octantis.metrics import TRIGGER_TOTAL
 
     try:
-        async for batch in batcher.run(_filtered_stream()):
+        async for event in consumer.events():
             if stop_event.is_set():
                 break
 
-            if not sampler.should_analyze(batch):
-                continue  # suppressed — logged inside Sampler
+            # Trigger filter
+            if not trigger_filter.should_investigate(event):
+                TRIGGER_TOTAL.labels(outcome="dropped").inc()
+                continue
+
+            # Fingerprint cooldown
+            if not cooldown.should_investigate(event):
+                TRIGGER_TOTAL.labels(outcome="cooldown").inc()
+                continue
+
+            TRIGGER_TOTAL.labels(outcome="passed").inc()
 
             log.info(
-                "octantis.batch.invoking_llm",
-                event_id=batch.event_id,
-                source=batch.source,
-                metrics_count=len(batch.metrics),
-                logs_count=len(batch.logs),
+                "octantis.trigger.invoking_investigation",
+                event_id=event.event_id,
+                source=event.source,
+                metrics_count=len(event.metrics),
+                logs_count=len(event.logs),
             )
 
             try:
-                result = await workflow.ainvoke({"event": batch})
+                result = await workflow.ainvoke({"event": event})
                 analysis = result.get("analysis")
                 notifications = result.get("notifications_sent", [])
+                investigation = result.get("investigation")
                 log.info(
-                    "octantis.batch.processed",
-                    event_id=batch.event_id,
+                    "octantis.trigger.processed",
+                    event_id=event.event_id,
                     severity=analysis.severity if analysis else None,
                     notified=notifications,
-                    sampler_stats=sampler.stats(),
+                    queries_count=len(investigation.queries_executed) if investigation else 0,
+                    mcp_degraded=investigation.mcp_degraded if investigation else False,
+                    cooldown_stats=cooldown.stats(),
                 )
             except Exception as exc:
                 log.error(
-                    "octantis.batch.error",
-                    event_id=batch.event_id,
+                    "octantis.trigger.error",
+                    event_id=event.event_id,
                     error=str(exc),
                     exc_info=True,
                 )
     finally:
         await consumer.stop()
-        log.info("octantis.stopped", sampler_stats=sampler.stats())
+        await mcp_manager.close()
+        log.info("octantis.stopped", cooldown_stats=cooldown.stats())
 
 
 def main() -> None:

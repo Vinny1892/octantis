@@ -1,8 +1,8 @@
-"""Sampler: cooldown-based deduplication to avoid re-analyzing the same issue.
+"""Fingerprint cooldown: deduplication to avoid re-investigating the same issue.
 
-Once an event fingerprint has been sent to the LLM, subsequent identical
-events within the cooldown window are suppressed. This prevents alert
-fatigue and unnecessary LLM cost when the same issue fires repeatedly.
+Once an event fingerprint has been investigated, subsequent identical events
+within the cooldown window are suppressed. This prevents alert fatigue and
+unnecessary LLM cost when the same issue fires repeatedly.
 """
 
 from __future__ import annotations
@@ -46,8 +46,11 @@ class _Entry:
     count: int = 1
 
 
-class Sampler:
-    """Tracks recently analyzed event fingerprints and suppresses duplicates.
+class FingerprintCooldown:
+    """Tracks recently investigated event fingerprints and suppresses duplicates.
+
+    Each occurrence within the cooldown window resets the timer (sliding window).
+    When the table exceeds max_entries, the oldest entry is evicted (LRU).
 
     Args:
         cooldown_seconds: How long to suppress repeated identical events.
@@ -56,27 +59,32 @@ class Sampler:
 
     def __init__(
         self,
-        cooldown_seconds: float = 300.0,  # 5 minutes default
+        cooldown_seconds: float = 300.0,
         max_entries: int = 1000,
     ) -> None:
         self._cooldown = cooldown_seconds
         self._max = max_entries
         self._seen: dict[str, _Entry] = {}
 
-    def should_analyze(self, event: InfraEvent) -> bool:
-        """Return True if this event should be sent to the LLM pipeline."""
+    def should_investigate(self, event: InfraEvent) -> bool:
+        """Return True if this event should be investigated."""
         fp = _fingerprint(event)
         now = time.monotonic()
         entry = self._seen.get(fp)
 
         if entry is None:
             self._record(fp, now)
+            log.debug(
+                "cooldown.first_seen",
+                event_id=event.event_id,
+                fingerprint=fp,
+            )
             return True
 
         elapsed = now - entry.last_seen
         if elapsed >= self._cooldown:
             log.debug(
-                "sampler.cooldown_expired",
+                "cooldown.expired",
                 event_id=event.event_id,
                 fingerprint=fp,
                 elapsed_s=round(elapsed),
@@ -85,11 +93,11 @@ class Sampler:
             self._record(fp, now)
             return True
 
-        # Within cooldown — suppress
+        # Within cooldown — suppress, but reset the sliding window timer
         entry.count += 1
         entry.last_seen = now
         log.info(
-            "sampler.suppressed",
+            "cooldown.suppressed",
             event_id=event.event_id,
             fingerprint=fp,
             cooldown_remaining_s=round(self._cooldown - elapsed),
@@ -99,13 +107,20 @@ class Sampler:
 
     def _record(self, fp: str, now: float) -> None:
         if len(self._seen) >= self._max:
-            # Evict the oldest entry
+            # Evict the oldest entry (LRU)
             oldest = min(self._seen, key=lambda k: self._seen[k].last_seen)
+            log.debug(
+                "cooldown.eviction",
+                evicted_fingerprint=oldest,
+                table_size=len(self._seen),
+            )
             del self._seen[oldest]
         self._seen[fp] = _Entry(last_seen=now)
 
     def stats(self) -> dict:
+        """Return current state metrics."""
         return {
             "tracked_fingerprints": len(self._seen),
             "cooldown_seconds": self._cooldown,
+            "max_entries": self._max,
         }

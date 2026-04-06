@@ -7,18 +7,20 @@ import structlog
 
 from octantis.models.action_plan import ActionPlan
 from octantis.models.analysis import Severity, SeverityAnalysis
-from octantis.models.event import EnrichedEvent
+from octantis.models.event import InvestigationResult
 
 log = structlog.get_logger(__name__)
 
 
 def _build_embed(
-    enriched: EnrichedEvent,
+    investigation: InvestigationResult,
     analysis: SeverityAnalysis,
     plan: ActionPlan | None,
+    extra_text: str = "",
 ) -> dict[str, Any]:
-    svc = enriched.original.resource.service_name or "unknown"
-    ns = enriched.original.resource.k8s_namespace or "unknown"
+    event = investigation.original_event
+    svc = event.resource.service_name or "unknown"
+    ns = event.resource.k8s_namespace or "unknown"
 
     fields: list[dict[str, Any]] = [
         {"name": "Service", "value": svc, "inline": True},
@@ -45,19 +47,14 @@ def _build_embed(
             }
         )
 
-    prom = enriched.prometheus
-    metric_parts = []
-    if prom.cpu_usage_percent is not None:
-        metric_parts.append(f"CPU: {prom.cpu_usage_percent:.1f}%")
-    if prom.memory_usage_percent is not None:
-        metric_parts.append(f"Mem: {prom.memory_usage_percent:.1f}%")
-    if prom.error_rate_5m is not None:
-        metric_parts.append(f"ErrRate: {prom.error_rate_5m:.3f}")
-    if metric_parts:
+    # Investigation context
+    if investigation.queries_executed:
+        queries_count = len(investigation.queries_executed)
+        duration = investigation.investigation_duration_s
         fields.append(
             {
-                "name": "Metrics",
-                "value": " | ".join(metric_parts),
+                "name": "Investigation",
+                "value": f"{queries_count} MCP queries in {duration:.1f}s",
                 "inline": False,
             }
         )
@@ -84,18 +81,28 @@ def _build_embed(
                 }
             )
 
+    # MCP degradation warning
+    if extra_text:
+        fields.append(
+            {
+                "name": "Warning",
+                "value": extra_text.strip()[:1024],
+                "inline": False,
+            }
+        )
+
     title_emoji = {
-        Severity.CRITICAL: "🔴",
-        Severity.MODERATE: "🟠",
-        Severity.LOW: "🟡",
-        Severity.NOT_A_PROBLEM: "✅",
+        Severity.CRITICAL: "\U0001f534",
+        Severity.MODERATE: "\U0001f7e0",
+        Severity.LOW: "\U0001f7e1",
+        Severity.NOT_A_PROBLEM: "\u2705",
     }[analysis.severity]
 
     return {
-        "title": f"{title_emoji} [{analysis.severity}] Infrastructure Alert — {svc}",
+        "title": f"{title_emoji} [{analysis.severity}] Infrastructure Alert \u2014 {svc}",
         "color": analysis.severity.discord_color,
         "fields": fields,
-        "footer": {"text": f"Event ID: {enriched.original.event_id} | Octantis"},
+        "footer": {"text": f"Event ID: {event.event_id} | Octantis"},
     }
 
 
@@ -105,11 +112,12 @@ class DiscordNotifier:
 
     async def send(
         self,
-        enriched_event: EnrichedEvent,
+        investigation: InvestigationResult,
         analysis: SeverityAnalysis,
         action_plan: ActionPlan | None = None,
+        extra_text: str = "",
     ) -> None:
-        embed = _build_embed(enriched_event, analysis, action_plan)
+        embed = _build_embed(investigation, analysis, action_plan, extra_text)
         payload = {"embeds": [embed]}
 
         async with httpx.AsyncClient(timeout=15) as client:
