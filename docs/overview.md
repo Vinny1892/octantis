@@ -13,7 +13,7 @@ Sistemas de monitoramento tradicionais geram alertas baseados em thresholds simp
 - "CPU > 80% → alerta"
 - "Restarts > 2 → alerta"
 
-Isso resulta em **alert fatigue**: a equipe ignora os alertas porque 90% são ruído. O Octantis inverte a lógica — ao invés de alertar por threshold, ele analisa o **contexto completo** (métricas, logs, estado K8s, histórico Prometheus) e decide se o problema merece atenção humana.
+Isso resulta em **alert fatigue**: a equipe ignora os alertas porque 90% são ruído. O Octantis inverte a lógica — ao invés de alertar por threshold, ele **investiga autonomamente** via MCP (Model Context Protocol), consultando Grafana (PromQL/LogQL) e Kubernetes para montar o contexto completo antes de decidir se o problema merece atenção humana.
 
 ## Fluxo de Dados Completo
 
@@ -29,30 +29,35 @@ flowchart TD
     end
 
     subgraph pipeline["Pipeline de Filtragem  (src/octantis/pipeline/)"]
-        PF["PreFilter\nRegras determinísticas"]:::pipe
-        BA["EventBatcher\nJanela 30s / max 20 eventos"]:::pipe
-        SA["Sampler\nCooldown de duplicatas"]:::pipe
+        TF["TriggerFilter\nRegras determinísticas"]:::pipe
+        CD["FingerprintCooldown\nDeduplicação por fingerprint"]:::pipe
     end
 
     subgraph agent["LangGraph Workflow  (src/octantis/graph/)"]
-        CO["collect\nPrometheus + K8s API"]:::node
+        INV["investigate\nReAct loop via MCP"]:::node
         AN["analyze\nLLM classifica severidade"]:::node
         RT{{"should_notify?\nCRITICAL / MODERATE"}}:::cond
         PL["plan\nLLM gera plano de ação"]:::node
         NO["notify\nSlack + Discord"]:::node
     end
 
+    subgraph mcp["MCP Servers"]
+        GF["Grafana MCP\nPromQL / LogQL"]:::ext
+        K8["K8s MCP\n(opcional)"]:::ext
+    end
+
     OC -->|"OTLP/gRPC"| GRPC
     OC -->|"OTLP/HTTP"| HTTP
     GRPC --> QUEUE
     HTTP --> QUEUE
-    QUEUE -->|"AsyncIterator[InfraEvent]"| PF
-    PF -->|"PASS"| BA
-    PF -->|"DROP ❌"| VOID1[" "]:::void
-    BA -->|"merged InfraEvent"| SA
-    SA -->|"novo fingerprint"| CO
-    SA -->|"duplicata ❌"| VOID2[" "]:::void
-    CO --> AN
+    QUEUE -->|"AsyncIterator[InfraEvent]"| TF
+    TF -->|"PASS"| CD
+    TF -->|"DROP ❌"| VOID1[" "]:::void
+    CD -->|"novo fingerprint"| INV
+    CD -->|"duplicata ❌"| VOID2[" "]:::void
+    INV -.->|"tool calls"| GF
+    INV -.->|"tool calls"| K8
+    INV --> AN
     AN --> RT
     RT -->|"severidade ≥ threshold"| PL
     RT -->|"LOW / NOT_A_PROBLEM"| END1[" "]:::void
@@ -71,8 +76,9 @@ flowchart TD
 |---|---|---|
 | **Receiver** | Recebe eventos OTLP via gRPC (:4317) e HTTP (:4318) | `receivers/` |
 | **Pipeline** | Decide o que vale o custo do LLM | `pipeline/` |
-| **Collectors** | Enriquece o evento com contexto adicional | `collectors/` |
+| **MCP Client** | Conexão SSE com Grafana MCP e K8s MCP | `mcp_client/manager.py` |
 | **Graph** | Orquestra o workflow LangGraph | `graph/workflow.py` |
+| **Metrics** | 9 métricas Prometheus em `:9090/metrics` | `metrics.py` |
 | **Notifiers** | Formata e envia Slack Block Kit / Discord Embeds | `notifiers/` |
 | **Config** | Toda configuração via env vars | `config.py` |
 
@@ -82,23 +88,22 @@ flowchart TD
 src/octantis/
 ├── main.py                  # Entrypoint — monta e executa o pipeline
 ├── config.py                # Pydantic BaseSettings (todas as configs via .env)
+├── metrics.py               # 9 métricas Prometheus + HTTP server
 ├── pipeline/
-│   ├── prefilter.py         # ← Porta de entrada: regras determinísticas
-│   ├── batcher.py           # ← Agrupamento temporal por workload
-│   └── sampler.py           # ← Deduplicação por fingerprint + cooldown
+│   ├── trigger_filter.py    # ← Porta de entrada: regras determinísticas
+│   └── cooldown.py          # ← Deduplicação por fingerprint + cooldown
 ├── receivers/
 │   ├── receiver.py          # OTLPReceiver — orquestra gRPC + HTTP + asyncio.Queue
 │   ├── grpc_server.py       # gRPC servicer (MetricsService, LogsService, TraceService)
 │   ├── http_server.py       # aiohttp server (/v1/metrics, /v1/logs, /v1/traces)
 │   └── parser.py            # OTLP Protobuf/JSON → InfraEvent
-├── collectors/
-│   ├── prometheus.py        # Queries PromQL para contexto
-│   └── kubernetes.py        # Pod/Node/Deployment state via K8s API
+├── mcp_client/
+│   └── manager.py           # MCPClientManager — SSE connections + tool discovery
 ├── graph/
 │   ├── workflow.py          # StateGraph LangGraph
 │   ├── state.py             # AgentState (TypedDict)
 │   └── nodes/
-│       ├── collector.py     # Nó: enriquecimento
+│       ├── investigator.py  # Nó: ReAct loop com ferramentas MCP
 │       ├── analyzer.py      # Nó: LLM classifica CRITICAL/MODERATE/LOW/NOT_A_PROBLEM
 │       ├── planner.py       # Nó: LLM gera plano de remediação
 │       └── notifier.py      # Nó: Slack + Discord
@@ -106,14 +111,14 @@ src/octantis/
 │   ├── slack.py             # Block Kit com cores por severidade
 │   └── discord.py           # Embeds com cores por severidade
 └── models/
-    ├── event.py             # InfraEvent, EnrichedEvent, OTelResource
+    ├── event.py             # InfraEvent, InvestigationResult, MCPQueryRecord
     ├── analysis.py          # SeverityAnalysis, Severity enum
     └── action_plan.py       # ActionPlan, ActionStep
 ```
 
 ## Modelos de Dados Centrais
 
-O dado flui por três formas ao longo do pipeline:
+O dado flui por quatro formas ao longo do pipeline:
 
 ```mermaid
 %%{init: {"theme": "dark", "themeVariables": {"primaryColor": "#2d333b", "primaryBorderColor": "#6d5dfc", "primaryTextColor": "#e6edf3", "lineColor": "#8b949e"}}}%%
@@ -129,10 +134,12 @@ classDiagram
         +logs: list[LogRecord]
     }
 
-    class EnrichedEvent {
-        +original: InfraEvent
-        +prometheus: PrometheusContext
-        +kubernetes: KubernetesContext
+    class InvestigationResult {
+        +original_event: InfraEvent
+        +queries_executed: list[MCPQueryRecord]
+        +evidence_summary: str
+        +mcp_degraded: bool
+        +budget_exhausted: bool
         +summary() str
     }
 
@@ -151,8 +158,8 @@ classDiagram
         +estimated_resolution_minutes: int
     }
 
-    InfraEvent --> EnrichedEvent : collector node
-    EnrichedEvent --> SeverityAnalysis : analyzer node
+    InfraEvent --> InvestigationResult : investigate node
+    InvestigationResult --> SeverityAnalysis : analyzer node
     SeverityAnalysis --> ActionPlan : planner node
 ```
 
@@ -166,4 +173,14 @@ uv sync
 uv run octantis
 ```
 
+Ou com Docker Compose (stack completo):
+
+```bash
+cd examples/docker-compose
+cp ../../.env.example .env
+# Editar ANTHROPIC_API_KEY
+docker compose up -d
+```
+
 Ver [Pipeline de Filtragem](./pipeline.md) para entender como os eventos são triados antes de chegar ao LLM.
+Ver [O Agente LangGraph](./agent.md) para entender o workflow de investigação, análise e notificação.
