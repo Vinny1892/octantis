@@ -21,7 +21,12 @@ Isso resulta em **alert fatigue**: a equipe ignora os alertas porque 90% são ru
 %%{init: {"theme": "dark", "themeVariables": {"primaryColor": "#2d333b", "primaryBorderColor": "#6d5dfc", "primaryTextColor": "#e6edf3", "lineColor": "#8b949e", "secondaryColor": "#161b22", "tertiaryColor": "#1c2128"}}}%%
 flowchart TD
     OC["OTel Collector\n(serviços K8s)"]:::ext
-    RP["Redpanda\notel-infra-events"]:::ext
+
+    subgraph receiver["OTLP Receiver  (src/octantis/receivers/)"]
+        GRPC["gRPC Server\n:4317"]:::pipe
+        HTTP["HTTP Server\n:4318"]:::pipe
+        QUEUE["asyncio.Queue\nInfraEvent"]:::pipe
+    end
 
     subgraph pipeline["Pipeline de Filtragem  (src/octantis/pipeline/)"]
         PF["PreFilter\nRegras determinísticas"]:::pipe
@@ -37,8 +42,11 @@ flowchart TD
         NO["notify\nSlack + Discord"]:::node
     end
 
-    OC -->|"OTel OTLP/JSON"| RP
-    RP -->|"aiokafka consumer"| PF
+    OC -->|"OTLP/gRPC"| GRPC
+    OC -->|"OTLP/HTTP"| HTTP
+    GRPC --> QUEUE
+    HTTP --> QUEUE
+    QUEUE -->|"AsyncIterator[InfraEvent]"| PF
     PF -->|"PASS"| BA
     PF -->|"DROP ❌"| VOID1[" "]:::void
     BA -->|"merged InfraEvent"| SA
@@ -61,7 +69,7 @@ flowchart TD
 
 | Módulo | Responsabilidade | Arquivo chave |
 |---|---|---|
-| **Consumer** | Consome eventos do Redpanda e desserializa OTel JSON | `consumers/redpanda.py` |
+| **Receiver** | Recebe eventos OTLP via gRPC (:4317) e HTTP (:4318) | `receivers/` |
 | **Pipeline** | Decide o que vale o custo do LLM | `pipeline/` |
 | **Collectors** | Enriquece o evento com contexto adicional | `collectors/` |
 | **Graph** | Orquestra o workflow LangGraph | `graph/workflow.py` |
@@ -78,8 +86,11 @@ src/octantis/
 │   ├── prefilter.py         # ← Porta de entrada: regras determinísticas
 │   ├── batcher.py           # ← Agrupamento temporal por workload
 │   └── sampler.py           # ← Deduplicação por fingerprint + cooldown
-├── consumers/
-│   └── redpanda.py          # aiokafka consumer, parser OTel → InfraEvent
+├── receivers/
+│   ├── receiver.py          # OTLPReceiver — orquestra gRPC + HTTP + asyncio.Queue
+│   ├── grpc_server.py       # gRPC servicer (MetricsService, LogsService, TraceService)
+│   ├── http_server.py       # aiohttp server (/v1/metrics, /v1/logs, /v1/traces)
+│   └── parser.py            # OTLP Protobuf/JSON → InfraEvent
 ├── collectors/
 │   ├── prometheus.py        # Queries PromQL para contexto
 │   └── kubernetes.py        # Pod/Node/Deployment state via K8s API

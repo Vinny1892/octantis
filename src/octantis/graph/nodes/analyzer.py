@@ -49,7 +49,7 @@ Raw metrics:
 {json.dumps([m.model_dump() for m in enriched_event.original.metrics], default=str, indent=2)}
 
 Recent logs:
-{json.dumps([l.model_dump() for l in enriched_event.original.logs[-5:]], default=str, indent=2)}
+{json.dumps([rec.model_dump() for rec in enriched_event.original.logs[-5:]], default=str, indent=2)}
 
 Kubernetes context:
 {enriched_event.kubernetes.model_dump_json(indent=2)}

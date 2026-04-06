@@ -11,12 +11,13 @@ from __future__ import annotations
 import asyncio
 import uuid
 from collections import defaultdict
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from datetime import datetime
 
 import structlog
 
-from octantis.models.event import InfraEvent, OTelResource
+from octantis.models.event import InfraEvent
 
 log = structlog.get_logger(__name__)
 
@@ -135,7 +136,7 @@ class EventBatcher:
             log.debug("batcher.max_size_reached", key=key, size=self._max_size)
             await self._flush(key)
 
-    async def run(self, source: "AsyncIterator[InfraEvent]") -> "AsyncIterator[InfraEvent]":
+    async def run(self, source: AsyncIterator[InfraEvent]) -> AsyncIterator[InfraEvent]:
         """Wrap an async event iterator with batching.
 
         Yields merged InfraEvent objects ready for the LLM pipeline.

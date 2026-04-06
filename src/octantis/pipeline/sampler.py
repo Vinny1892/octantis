@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import structlog
 
@@ -26,9 +26,7 @@ def _fingerprint(event: InfraEvent) -> str:
     """
     parts = [
         event.resource.k8s_namespace or "",
-        event.resource.k8s_deployment_name
-        or event.resource.k8s_pod_name
-        or event.source,
+        event.resource.k8s_deployment_name or event.resource.k8s_pod_name or event.source,
         event.event_type,
         ",".join(sorted(m.name for m in event.metrics)),
     ]

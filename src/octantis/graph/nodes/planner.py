@@ -51,16 +51,16 @@ def _build_user_message(state: AgentState) -> str:
 
 Severity: {analysis.severity} (confidence: {analysis.confidence:.0%})
 Analysis: {analysis.reasoning}
-Affected components: {', '.join(analysis.affected_components) or 'unknown'}
+Affected components: {", ".join(analysis.affected_components) or "unknown"}
 Is transient: {analysis.is_transient}
 
 Infrastructure context:
 {enriched.summary}
 
-Kubernetes namespace: {enriched.original.resource.k8s_namespace or 'unknown'}
-Pod: {enriched.original.resource.k8s_pod_name or 'unknown'}
-Node: {enriched.original.resource.k8s_node_name or 'unknown'}
-Deployment: {enriched.original.resource.k8s_deployment_name or 'unknown'}
+Kubernetes namespace: {enriched.original.resource.k8s_namespace or "unknown"}
+Pod: {enriched.original.resource.k8s_pod_name or "unknown"}
+Node: {enriched.original.resource.k8s_node_name or "unknown"}
+Deployment: {enriched.original.resource.k8s_deployment_name or "unknown"}
 """
 
 
@@ -106,7 +106,7 @@ async def planner_node(state: AgentState) -> AgentState:
         log.error("planner.parse_error", error=str(exc), raw=raw_content[:300])
         plan = ActionPlan(
             title="Remediation plan (parse error)",
-            summary=f"LLM response could not be parsed. Review raw data manually.",
+            summary="LLM response could not be parsed. Review raw data manually.",
             steps=[
                 ActionStep(
                     order=1,

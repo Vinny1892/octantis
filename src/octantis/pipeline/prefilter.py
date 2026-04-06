@@ -19,8 +19,8 @@ log = structlog.get_logger(__name__)
 
 
 class Decision(str, Enum):
-    PASS = "pass"    # send to LLM pipeline
-    DROP = "drop"    # discard silently
+    PASS = "pass"  # send to LLM pipeline
+    DROP = "drop"  # discard silently
 
 
 @dataclass
@@ -39,6 +39,7 @@ class Rule(Protocol):
 
 
 # ─── Concrete rules ──────────────────────────────────────────────────────────
+
 
 @dataclass
 class HealthCheckRule:
@@ -81,21 +82,23 @@ class MetricThresholdRule:
     name: str = "metric_threshold"
 
     # Thresholds for "boring" values — drop if ALL metrics are below these
-    cpu_ok_below: float = 75.0          # %
-    memory_ok_below: float = 80.0       # %
-    error_rate_ok_below: float = 0.01   # req/s
-    restart_count_ok_below: int = 3     # cumulative restarts
+    cpu_ok_below: float = 75.0  # %
+    memory_ok_below: float = 80.0  # %
+    error_rate_ok_below: float = 0.01  # req/s
+    restart_count_ok_below: int = 3  # cumulative restarts
 
     # Metric name substrings that indicate problems regardless of value
-    _ALWAYS_ANALYZE_NAMES: frozenset[str] = frozenset({
-        "oomkill",
-        "eviction",
-        "failed",
-        "error",
-        "crash",
-        "panic",
-        "timeout",
-    })
+    _ALWAYS_ANALYZE_NAMES: frozenset[str] = frozenset(
+        {
+            "oomkill",
+            "eviction",
+            "failed",
+            "error",
+            "crash",
+            "panic",
+            "timeout",
+        }
+    )
 
     def evaluate(self, event: InfraEvent) -> FilterResult | None:
         if not event.metrics:
@@ -116,9 +119,9 @@ class MetricThresholdRule:
         breached: list[str] = []
         for m in event.metrics:
             name = m.name.lower()
-            if "cpu" in name and m.value >= self.cpu_ok_below:
-                breached.append(f"{m.name}={m.value:.1f}%")
-            elif "memory" in name and m.value >= self.memory_ok_below:
+            if ("cpu" in name and m.value >= self.cpu_ok_below) or (
+                "memory" in name and m.value >= self.memory_ok_below
+            ):
                 breached.append(f"{m.name}={m.value:.1f}%")
             elif "error" in name and m.value >= self.error_rate_ok_below:
                 breached.append(f"{m.name}={m.value:.3f}")
@@ -155,10 +158,16 @@ class LogSeverityRule:
         ]
     )
 
-    _BORING_SEVERITIES: frozenset[str] = frozenset({
-        "INFO", "DEBUG", "TRACE",
-        "info", "debug", "trace",
-    })
+    _BORING_SEVERITIES: frozenset[str] = frozenset(
+        {
+            "INFO",
+            "DEBUG",
+            "TRACE",
+            "info",
+            "debug",
+            "trace",
+        }
+    )
 
     def evaluate(self, event: InfraEvent) -> FilterResult | None:
         if not event.logs:
@@ -249,6 +258,7 @@ class EventTypeAllowlistRule:
 
 # ─── Pre-filter engine ────────────────────────────────────────────────────────
 
+
 class PreFilter:
     """Evaluates a chain of rules and returns a final FilterResult.
 
@@ -268,15 +278,13 @@ class PreFilter:
         error_rate_threshold: float = 0.01,
         benign_patterns: list[str] | None = None,
         allowed_event_types: list[str] | None = None,
-    ) -> "PreFilter":
+    ) -> PreFilter:
         """Build a pre-filter with the standard rule chain."""
         rules: list[Rule] = [
             HealthCheckRule(),
             BenignPatternRule(patterns=benign_patterns or []),
             EventTypeAllowlistRule(
-                allowed_types=frozenset(allowed_event_types)
-                if allowed_event_types
-                else frozenset()
+                allowed_types=frozenset(allowed_event_types) if allowed_event_types else frozenset()
             ),
             MetricThresholdRule(
                 cpu_ok_below=cpu_threshold,

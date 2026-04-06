@@ -54,8 +54,7 @@ class KubernetesCollector:
                 for c in (pod_obj.status.conditions or [])
             ]
             restarts = sum(
-                (cs.restart_count or 0)
-                for cs in (pod_obj.status.container_statuses or [])
+                (cs.restart_count or 0) for cs in (pod_obj.status.container_statuses or [])
             )
             ctx.pod_restart_count = restarts
         except ApiException as exc:
@@ -66,8 +65,7 @@ class KubernetesCollector:
             node_obj = self._core.read_node(name=node)
             conditions = node_obj.status.conditions or []
             ctx.node_conditions = [
-                {"type": c.type, "status": c.status, "reason": c.reason}
-                for c in conditions
+                {"type": c.type, "status": c.status, "reason": c.reason} for c in conditions
             ]
             ctx.node_pressure = {
                 c.type: c.status == "True"

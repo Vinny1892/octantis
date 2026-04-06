@@ -7,9 +7,9 @@ import sys
 import structlog
 
 from octantis.config import settings
-from octantis.consumers.redpanda import RedpandaConsumer
 from octantis.graph.workflow import build_workflow
 from octantis.pipeline import EventBatcher, PreFilter, Sampler
+from octantis.receivers import OTLPReceiver
 
 log = structlog.get_logger(__name__)
 
@@ -26,9 +26,7 @@ def _configure_logging() -> None:
             if sys.stderr.isatty()
             else structlog.processors.JSONRenderer(),
         ],
-        wrapper_class=structlog.make_filtering_bound_logger(
-            getattr(logging, settings.log_level)
-        ),
+        wrapper_class=structlog.make_filtering_bound_logger(getattr(logging, settings.log_level)),
         context_class=dict,
         logger_factory=structlog.PrintLoggerFactory(),
     )
@@ -62,7 +60,7 @@ async def run() -> None:
     log.info("octantis.starting", version="0.1.0")
 
     workflow = build_workflow()
-    consumer = RedpandaConsumer(settings.redpanda)
+    consumer = OTLPReceiver(settings.otlp)
     pre_filter, batcher, sampler = _build_pipeline()
 
     stop_event = asyncio.Event()
@@ -77,7 +75,8 @@ async def run() -> None:
     await consumer.start()
     log.info(
         "octantis.ready",
-        topic=settings.redpanda.topic,
+        grpc_port=settings.otlp.grpc_port if settings.otlp.grpc_enabled else None,
+        http_port=settings.otlp.http_port if settings.otlp.http_enabled else None,
         batch_window_s=settings.pipeline.batch_window_seconds,
         sampler_cooldown_s=settings.pipeline.sampler_cooldown_seconds,
     )

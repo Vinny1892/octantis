@@ -2,17 +2,17 @@
 
 Intelligent infrastructure monitoring agent for EKS/Kubernetes.
 
-Consumes OTel metrics/logs from Redpanda, uses an LLM to assess true operational
-severity, and notifies Slack + Discord with a concrete remediation plan.
+Receives OTel metrics/logs directly via OTLP (gRPC + HTTP), uses an LLM to assess
+true operational severity, and notifies Slack + Discord with a concrete remediation plan.
 
 ## Architecture
 
 ```
-OTel Collector → Redpanda → Octantis Agent → Slack / Discord
-                                 ↕
-                    Prometheus API / Kubernetes API / Grafana MCP
-                                 ↕
-                          LLM (Anthropic / OpenRouter)
+OTel Collector ──OTLP/gRPC:4317──► Octantis Agent → Slack / Discord
+OTel Collector ──OTLP/HTTP:4318──►       ↕
+                          Prometheus API / Kubernetes API / Grafana MCP
+                                         ↕
+                                  LLM (Anthropic / OpenRouter)
 ```
 
 ## Quickstart
@@ -25,7 +25,7 @@ uv sync
 cp .env.example .env
 # Edit .env with your credentials
 
-# 3. Run
+# 3. Run (starts OTLP receivers on ports 4317/4318)
 uv run octantis
 ```
 
@@ -35,8 +35,7 @@ uv run octantis
 # Run tests
 uv run pytest
 
-# Run with local Redpanda (docker-compose)
-docker compose up -d redpanda
+# Run locally — configure OTel Collector to export to localhost:4317
 uv run octantis
 ```
 
@@ -46,8 +45,11 @@ All settings are via environment variables (see `.env.example`).
 
 | Variable | Default | Description |
 |---|---|---|
-| `REDPANDA_BROKERS` | `localhost:9092` | Comma-separated broker list |
-| `REDPANDA_TOPIC` | `otel-infra-events` | Topic to consume |
+| `OTLP_GRPC_PORT` | `4317` | gRPC receiver port |
+| `OTLP_HTTP_PORT` | `4318` | HTTP receiver port |
+| `OTLP_GRPC_ENABLED` | `true` | Enable/disable gRPC transport |
+| `OTLP_HTTP_ENABLED` | `true` | Enable/disable HTTP transport |
+| `OTLP_QUEUE_MAX_SIZE` | `1000` | Max events buffered before drop |
 | `LLM_PROVIDER` | `anthropic` | `anthropic` or `openrouter` |
 | `LLM_MODEL` | `claude-sonnet-4-6` | Model name |
 | `PROMETHEUS_URL` | `http://prometheus:9090` | Prometheus base URL |

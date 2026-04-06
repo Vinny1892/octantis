@@ -1,6 +1,6 @@
 """Unit tests for notifier node and notifier implementations."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -8,8 +8,8 @@ from octantis.graph.nodes.notifier import notifier_node
 from octantis.models.action_plan import ActionPlan, ActionStep, StepType
 from octantis.models.analysis import Severity, SeverityAnalysis
 from octantis.models.event import EnrichedEvent, InfraEvent, OTelResource
-from octantis.notifiers.discord import DiscordNotifier, _build_embed
-from octantis.notifiers.slack import SlackNotifier, _build_blocks
+from octantis.notifiers.discord import _build_embed
+from octantis.notifiers.slack import _build_blocks
 
 
 def _make_state(severity: Severity = Severity.CRITICAL):
@@ -135,16 +135,12 @@ async def test_notifier_continues_on_error():
 def test_slack_blocks_structure():
     """Slack Block Kit output contains required sections."""
     state = _make_state()
-    blocks = _build_blocks(
-        state["enriched_event"], state["analysis"], state["action_plan"]
-    )
+    blocks = _build_blocks(state["enriched_event"], state["analysis"], state["action_plan"])
     # Must have header block
     assert any(b.get("type") == "header" for b in blocks)
     # Must have at least one section with analysis
     section_texts = [
-        b.get("text", {}).get("text", "")
-        for b in blocks
-        if b.get("type") == "section"
+        b.get("text", {}).get("text", "") for b in blocks if b.get("type") == "section"
     ]
     assert any("Service is down" in t for t in section_texts)
 
@@ -152,9 +148,7 @@ def test_slack_blocks_structure():
 def test_discord_embed_structure():
     """Discord embed has required fields and correct color for CRITICAL."""
     state = _make_state(severity=Severity.CRITICAL)
-    embed = _build_embed(
-        state["enriched_event"], state["analysis"], state["action_plan"]
-    )
+    embed = _build_embed(state["enriched_event"], state["analysis"], state["action_plan"])
     assert embed["color"] == 0xFF0000
     assert "CRITICAL" in embed["title"]
     field_names = [f["name"] for f in embed["fields"]]

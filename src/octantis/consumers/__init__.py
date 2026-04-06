@@ -1,3 +1,1 @@
-from .redpanda import RedpandaConsumer
-
-__all__ = ["RedpandaConsumer"]
+"""Consumers package (deprecated — see octantis.receivers)."""

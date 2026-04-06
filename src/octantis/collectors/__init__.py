@@ -1,4 +1,4 @@
-from .prometheus import PrometheusCollector
 from .kubernetes import KubernetesCollector
+from .prometheus import PrometheusCollector
 
-__all__ = ["PrometheusCollector", "KubernetesCollector"]
+__all__ = ["KubernetesCollector", "PrometheusCollector"]

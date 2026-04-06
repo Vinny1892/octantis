@@ -65,9 +65,7 @@ def _build_embed(
     if plan:
         plan_lines = [f"**{plan.title}**", plan.summary, ""]
         for step in plan.steps[:4]:
-            plan_lines.append(
-                f"`{step.order}.` **[{step.type.value.upper()}]** {step.title}"
-            )
+            plan_lines.append(f"`{step.order}.` **[{step.type.value.upper()}]** {step.title}")
             if step.command:
                 plan_lines.append(f"```{step.command}```")
         fields.append(
@@ -97,9 +95,7 @@ def _build_embed(
         "title": f"{title_emoji} [{analysis.severity}] Infrastructure Alert — {svc}",
         "color": analysis.severity.discord_color,
         "fields": fields,
-        "footer": {
-            "text": f"Event ID: {enriched.original.event_id} | Octantis"
-        },
+        "footer": {"text": f"Event ID: {enriched.original.event_id} | Octantis"},
     }
 
 

@@ -12,7 +12,7 @@ description: "Deep-dive nas três camadas que separam sinal de ruído antes de q
 ```mermaid
 %%{init: {"theme": "dark", "themeVariables": {"primaryColor": "#2d333b", "primaryBorderColor": "#6d5dfc", "primaryTextColor": "#e6edf3", "lineColor": "#8b949e", "secondaryColor": "#161b22"}}}%%
 flowchart LR
-    IN(["InfraEvent\ndo Redpanda"]):::input
+    IN(["InfraEvent\ndo OTLP Receiver"]):::input
 
     subgraph L1["Camada 1 — PreFilter"]
         direction TB

@@ -1,0 +1,163 @@
+# OpenTelemetryCollector CR for the OTel Operator
+# Operator version: 0.107.0
+# Collector image:  otel/opentelemetry-collector-contrib:0.149.0
+#
+# Prerequisites:
+#   1. OTel Operator installed (see examples/README.md)
+#   2. Octantis running in the same namespace or reachable via Service
+#
+# Deploy:
+#   kubectl apply -f namespace.yaml
+#   kubectl apply -f opentelemetrycollector.yaml
+
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: octantis-collector
+  namespace: monitoring
+spec:
+  mode: deployment
+  replicas: 1
+  image: otel/opentelemetry-collector-contrib:0.149.0
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+  config:
+    receivers:
+      # Scrape kubelet stats (CPU, memory, network, filesystem per pod/container)
+      kubeletstats:
+        collection_interval: 15s
+        auth_type: serviceAccount
+        endpoint: "https://${env:K8S_NODE_NAME}:10250"
+        insecure_skip_verify: true
+        metric_groups:
+          - pod
+          - container
+          - node
+
+      # Accept OTLP from instrumented workloads
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+    processors:
+      # Enrich with Kubernetes metadata (pod name, namespace, deployment, node)
+      k8sattributes:
+        auth_type: serviceAccount
+        extract:
+          metadata:
+            - k8s.namespace.name
+            - k8s.pod.name
+            - k8s.pod.uid
+            - k8s.node.name
+            - k8s.deployment.name
+          labels:
+            - tag_name: app
+              key: app.kubernetes.io/name
+              from: pod
+        pod_association:
+          - sources:
+              - from: resource_attribute
+                name: k8s.pod.ip
+
+      # Batch before export
+      batch:
+        send_batch_size: 256
+        timeout: 10s
+
+      # Memory limiter
+      memory_limiter:
+        check_interval: 5s
+        limit_mib: 192
+        spike_limit_mib: 48
+
+    exporters:
+      # Forward to Octantis OTLP receiver
+      # Assumes Octantis is deployed as a Service named "octantis" in the same namespace
+      otlp:
+        endpoint: octantis.monitoring.svc.cluster.local:4317
+        tls:
+          insecure: true
+
+    service:
+      pipelines:
+        metrics:
+          receivers: [kubeletstats, otlp]
+          processors: [memory_limiter, k8sattributes, batch]
+          exporters: [otlp]
+
+        logs:
+          receivers: [otlp]
+          processors: [memory_limiter, k8sattributes, batch]
+          exporters: [otlp]
+
+        # Traces accepted for compatibility — Octantis discards them
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [otlp]
+
+      telemetry:
+        logs:
+          level: info
+        metrics:
+          address: 0.0.0.0:8888
+
+  # Environment variables injected by the operator
+  env:
+    - name: K8S_NODE_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: spec.nodeName
+
+  # ServiceAccount with RBAC for kubeletstats + k8sattributes
+  serviceAccount: octantis-collector
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: octantis-collector
+  namespace: monitoring
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: octantis-collector
+rules:
+  # kubeletstats needs node/stats proxy
+  - apiGroups: [""]
+    resources: ["nodes/stats", "nodes/proxy"]
+    verbs: ["get"]
+  # k8sattributes needs pod metadata
+  - apiGroups: [""]
+    resources: ["pods", "namespaces", "nodes"]
+    verbs: ["get", "list", "watch"]
+  # k8sattributes needs replicaset/deployment for owner references
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: octantis-collector
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: octantis-collector
+subjects:
+  - kind: ServiceAccount
+    name: octantis-collector
+    namespace: monitoring

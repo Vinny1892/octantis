@@ -96,8 +96,7 @@ class EnrichedEvent(BaseModel):
             parts.append(f"Pod: {self.original.resource.k8s_pod_name}")
         if self.original.metrics:
             metrics_str = ", ".join(
-                f"{m.name}={m.value}{m.unit or ''}"
-                for m in self.original.metrics[:5]
+                f"{m.name}={m.value}{m.unit or ''}" for m in self.original.metrics[:5]
             )
             parts.append(f"Metrics: {metrics_str}")
         if self.original.logs:

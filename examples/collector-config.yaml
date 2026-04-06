@@ -1,0 +1,81 @@
+# OpenTelemetry Collector configuration for Octantis
+# Collector version: otel/opentelemetry-collector-contrib:0.149.0
+#
+# This config collects host metrics and forwards them to Octantis
+# via OTLP/gRPC. Adjust the endpoint below to match your setup.
+
+receivers:
+  # Host metrics (CPU, memory, disk, network)
+  hostmetrics:
+    collection_interval: 15s
+    scrapers:
+      cpu:
+      memory:
+      disk:
+      network:
+      load:
+
+  # Accept OTLP from instrumented applications
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  # Add resource attributes for identification
+  resource:
+    attributes:
+      - key: service.name
+        value: "local-host"
+        action: upsert
+      - key: deployment.environment
+        value: "dev"
+        action: upsert
+
+  # Batch telemetry before export to reduce overhead
+  batch:
+    send_batch_size: 256
+    timeout: 10s
+
+  # Limit memory usage
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 256
+    spike_limit_mib: 64
+
+exporters:
+  # Forward to Octantis OTLP receiver
+  otlp:
+    endpoint: localhost:4317
+    tls:
+      insecure: true
+
+  # Debug output (optional, remove in production)
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    metrics:
+      receivers: [hostmetrics, otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp]
+
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp]
+
+    # Traces pass through but Octantis discards them (accepted for compatibility)
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp]
+
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      address: 0.0.0.0:8888

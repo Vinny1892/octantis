@@ -1,6 +1,6 @@
 """Unit tests for the collector node."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -36,12 +36,8 @@ async def test_collector_enriches_event():
     k8s_ctx = KubernetesContext(pod_phase="Running", pod_restart_count=2)
 
     with (
-        patch(
-            "octantis.graph.nodes.collector.PrometheusCollector"
-        ) as MockProm,
-        patch(
-            "octantis.graph.nodes.collector.KubernetesCollector"
-        ) as MockK8s,
+        patch("octantis.graph.nodes.collector.PrometheusCollector") as MockProm,
+        patch("octantis.graph.nodes.collector.KubernetesCollector") as MockK8s,
     ):
         MockProm.return_value.collect = AsyncMock(return_value=prom_ctx)
         MockK8s.return_value.collect = AsyncMock(return_value=k8s_ctx)

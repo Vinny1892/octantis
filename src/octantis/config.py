@@ -6,20 +6,14 @@ from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class RedpandaSettings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="REDPANDA_", extra="ignore")
+class OTLPSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="OTLP_", extra="ignore")
 
-    brokers: str = "localhost:9092"
-    topic: str = "otel-infra-events"
-    group_id: str = "octantis-agent"
-    security_protocol: str = "PLAINTEXT"
-    sasl_mechanism: str | None = None
-    sasl_username: str | None = None
-    sasl_password: str | None = None
-
-    @property
-    def broker_list(self) -> list[str]:
-        return [b.strip() for b in self.brokers.split(",")]
+    grpc_port: int = 4317
+    http_port: int = 4318
+    grpc_enabled: bool = True
+    http_enabled: bool = True
+    queue_max_size: int = 1000
 
 
 class LLMSettings(BaseSettings):
@@ -81,9 +75,9 @@ class PipelineSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="PIPELINE_", extra="ignore")
 
     # Pre-filter thresholds
-    cpu_threshold: float = 75.0          # % — pass if CPU >= this
-    memory_threshold: float = 80.0       # % — pass if memory >= this
-    error_rate_threshold: float = 0.01   # req/s — pass if error rate >= this
+    cpu_threshold: float = 75.0  # % — pass if CPU >= this
+    memory_threshold: float = 80.0  # % — pass if memory >= this
+    error_rate_threshold: float = 0.01  # req/s — pass if error rate >= this
     # Comma-separated regex patterns for known-benign sources/logs to always drop
     benign_patterns: str = ""
     # Comma-separated event types to allow (empty = allow all)
@@ -114,11 +108,9 @@ class Settings(BaseSettings):
     )
 
     log_level: str = "INFO"
-    min_severity_to_notify: Literal["CRITICAL", "MODERATE", "LOW", "NOT_A_PROBLEM"] = (
-        "MODERATE"
-    )
+    min_severity_to_notify: Literal["CRITICAL", "MODERATE", "LOW", "NOT_A_PROBLEM"] = "MODERATE"
 
-    redpanda: RedpandaSettings = Field(default_factory=RedpandaSettings)
+    otlp: OTLPSettings = Field(default_factory=OTLPSettings)
     llm: LLMSettings = Field(default_factory=LLMSettings)
     prometheus: PrometheusSettings = Field(default_factory=PrometheusSettings)
     kubernetes: KubernetesSettings = Field(default_factory=KubernetesSettings)

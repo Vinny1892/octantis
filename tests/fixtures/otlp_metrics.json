@@ -1,0 +1,77 @@
+{
+  "resourceMetrics": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "k8s-app"
+            }
+          },
+          {
+            "key": "k8s.namespace.name",
+            "value": {
+              "stringValue": "production"
+            }
+          },
+          {
+            "key": "k8s.pod.name",
+            "value": {
+              "stringValue": "k8s-app-7b8f9c-x2k"
+            }
+          },
+          {
+            "key": "k8s.node.name",
+            "value": {
+              "stringValue": "node-1"
+            }
+          }
+        ]
+      },
+      "scopeMetrics": [
+        {
+          "metrics": [
+            {
+              "name": "container_cpu_usage_seconds_total",
+              "unit": "s",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "asDouble": 85.3,
+                    "timeUnixNano": "1700000000000000000"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "container_memory_working_set_bytes",
+              "unit": "By",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "asDouble": 524288000.0,
+                    "timeUnixNano": "1700000000000000000"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "kube_pod_container_status_restarts_total",
+              "unit": "1",
+              "sum": {
+                "dataPoints": [
+                  {
+                    "asInt": "3",
+                    "timeUnixNano": "1700000000000000000"
+                  }
+                ],
+                "isMonotonic": true
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

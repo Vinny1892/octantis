@@ -1,7 +1,6 @@
 """Tests for pre-filter, batcher, and sampler."""
 
 import asyncio
-import time
 
 import pytest
 
@@ -17,8 +16,8 @@ from octantis.pipeline.prefilter import (
 )
 from octantis.pipeline.sampler import Sampler, _fingerprint
 
-
 # ─── Helpers ─────────────────────────────────────────────────────────────────
+
 
 def _event(
     source="api-server",
@@ -44,6 +43,7 @@ def _event(
 
 # ─── Pre-filter: HealthCheckRule ─────────────────────────────────────────────
 
+
 def test_health_check_rule_drops_probe_logs():
     rule = HealthCheckRule()
     event = _event(logs=[("GET /healthz HTTP/1.1 200", "INFO")])
@@ -59,6 +59,7 @@ def test_health_check_rule_passes_normal_logs():
 
 
 # ─── Pre-filter: MetricThresholdRule ─────────────────────────────────────────
+
 
 def test_metric_threshold_drops_healthy_metrics():
     rule = MetricThresholdRule(cpu_ok_below=75.0, memory_ok_below=80.0)
@@ -101,6 +102,7 @@ def test_metric_threshold_no_metrics_returns_none():
 
 # ─── Pre-filter: LogSeverityRule ─────────────────────────────────────────────
 
+
 def test_log_severity_drops_plain_info():
     rule = LogSeverityRule()
     event = _event(logs=[("Server started on port 8080", "INFO")])
@@ -131,6 +133,7 @@ def test_log_severity_passes_panic_keyword():
 
 # ─── Pre-filter: BenignPatternRule ───────────────────────────────────────────
 
+
 def test_benign_pattern_drops_matching_source():
     rule = BenignPatternRule(patterns=["nightly-batch", "prometheus-scrape"])
     event = _event(source="nightly-batch-job")
@@ -145,6 +148,7 @@ def test_benign_pattern_passes_unmatched():
 
 
 # ─── PreFilter integration ───────────────────────────────────────────────────
+
 
 def test_prefilter_drops_health_probe():
     pf = PreFilter.default()
@@ -172,6 +176,7 @@ def test_prefilter_default_pass_no_rules_match():
 
 
 # ─── Batcher ─────────────────────────────────────────────────────────────────
+
 
 def test_batch_key_groups_by_workload():
     e1 = _event(ns="prod", pod="api-abc")
@@ -241,6 +246,7 @@ async def test_batcher_flushes_on_window():
 
 
 # ─── Sampler ─────────────────────────────────────────────────────────────────
+
 
 def test_sampler_allows_first_occurrence():
     sampler = Sampler(cooldown_seconds=60.0)

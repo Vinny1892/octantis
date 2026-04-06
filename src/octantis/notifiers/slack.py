@@ -115,7 +115,9 @@ def _build_blocks(
             }
         )
         for step in plan.steps[:5]:  # limit to 5 steps for readability
-            step_text = f"*{step.order}. [{step.type.value.upper()}] {step.title}*\n{step.description}"
+            step_text = (
+                f"*{step.order}. [{step.type.value.upper()}] {step.title}*\n{step.description}"
+            )
             if step.command:
                 step_text += f"\n```{step.command}```"
             blocks.append(

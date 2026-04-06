@@ -1,4 +1,4 @@
-from .slack import SlackNotifier
 from .discord import DiscordNotifier
+from .slack import SlackNotifier
 
-__all__ = ["SlackNotifier", "DiscordNotifier"]
+__all__ = ["DiscordNotifier", "SlackNotifier"]

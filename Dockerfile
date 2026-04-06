@@ -29,6 +29,9 @@ ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
+# OTLP receiver ports
+EXPOSE 4317 4318
+
 # Non-root user
 RUN adduser --disabled-password --gecos "" octantis
 USER octantis
