@@ -195,7 +195,11 @@ async def investigate_node(
                 "name": t.name,
                 "description": t.description or "",
                 "parameters": t.args_schema.model_json_schema()
-                if hasattr(t, "args_schema") and t.args_schema
+                if hasattr(t, "args_schema")
+                and t.args_schema
+                and hasattr(t.args_schema, "model_json_schema")
+                else t.args_schema
+                if isinstance(t.args_schema, dict)
                 else {"type": "object", "properties": {}},
             },
         }
