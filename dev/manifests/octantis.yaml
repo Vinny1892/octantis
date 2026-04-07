@@ -63,6 +63,10 @@ spec:
                   name: mcp-grafana-token
                   key: token
 
+            # Kubernetes MCP
+            - name: K8S_MCP_URL
+              value: "http://mcp-k8s.monitoring.svc.cluster.local:8080/sse"
+
             # Investigation
             - name: INVESTIGATION_MAX_QUERIES
               value: "10"

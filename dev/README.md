@@ -49,6 +49,7 @@ flowchart TD
             GRAF["Grafana\n(admin/admin)"]:::infra
             AM["Alertmanager"]:::infra
             MCP["mcp-grafana\n:8080/sse"]:::app
+            MCPK8S["mcp-k8s\n:8080/sse"]:::app
             OCT["Octantis\n:4317 gRPC / :4318 HTTP\n:9090 metrics"]:::app
         end
 
@@ -76,6 +77,7 @@ flowchart TD
     GRAF -->|"datasource Mimir"| MIMIR
     MCP -->|"Grafana API"| GRAF
     OCT -->|"MCP SSE"| MCP
+    OCT -->|"MCP SSE"| MCPK8S
     PROM -->|"scrape :9090"| OCT
 
     classDef ext fill:#1c2128,stroke:#6d5dfc,color:#e6edf3
@@ -155,6 +157,15 @@ Servidor MCP (Model Context Protocol) que expõe ferramentas de query do Grafana
 - **Imagem**: `ghcr.io/grafana/mcp-grafana:latest`
 - **Endpoint**: `mcp-grafana.monitoring.svc.cluster.local:8080/sse`
 - **Autenticação**: Service account token do Grafana, criado automaticamente pelo `setup.sh` e armazenado no secret `mcp-grafana-token`
+
+### Kubernetes MCP Server (`dev/manifests/mcp-k8s.yaml`)
+
+Servidor MCP que expõe queries de recursos Kubernetes via SSE. Roda no namespace `monitoring` com acesso read-only ao cluster.
+
+- **Imagem**: `ghcr.io/containers/kubernetes-mcp-server:latest`
+- **Endpoint**: `mcp-k8s.monitoring.svc.cluster.local:8080/sse`
+- **Autenticação**: ServiceAccount `mcp-k8s` com ClusterRole read-only (pods, deployments, services, events, etc.)
+- **Modo**: `--read-only` (não permite modificações no cluster)
 
 ### Octantis (`dev/manifests/octantis.yaml`)
 
@@ -280,6 +291,7 @@ dev/
     ├── grafana-route.yaml                # HTTPRoute + ReferenceGrant para Grafana
     ├── mimir-route.yaml                  # HTTPRoute para Mimir API
     ├── mcp-grafana.yaml                  # Deployment + Service do MCP Grafana
+    ├── mcp-k8s.yaml                      # ServiceAccount + RBAC + Deployment + Service do MCP K8s
     ├── octantis.yaml                     # Deployment + Service do Octantis
     ├── nginx-demo.yaml                   # Deployment + Service + HTTPRoute (teste)
     └── ngf-servicemonitor.yaml           # ServiceMonitor para nginx-gateway-fabric

@@ -185,6 +185,13 @@ else
 fi
 
 # -----------------------------------------------
+# Kubernetes MCP Server
+# -----------------------------------------------
+echo ""
+echo "==> Instalando Kubernetes MCP Server (namespace: monitoring)..."
+kubectl apply -f "$SCRIPT_DIR/manifests/mcp-k8s.yaml"
+
+# -----------------------------------------------
 # Octantis agent
 # -----------------------------------------------
 echo ""
