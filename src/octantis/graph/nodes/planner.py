@@ -4,7 +4,7 @@ import structlog
 from litellm import acompletion
 
 from octantis.config import settings
-from octantis.graph.nodes.utils import parse_llm_json
+from octantis.graph.nodes.utils import language_instruction, parse_llm_json
 from octantis.graph.state import AgentState
 from octantis.models.action_plan import ActionPlan, ActionStep, StepType
 
@@ -85,7 +85,7 @@ async def planner_node(state: AgentState) -> AgentState:
     response = await acompletion(
         model=model,
         messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": SYSTEM_PROMPT + language_instruction(settings.language)},
             {"role": "user", "content": _build_user_message(state)},
         ],
         max_tokens=settings.llm.max_tokens,

@@ -427,6 +427,9 @@ INVESTIGATION_QUERY_TIMEOUT_SECONDS=10
 # Severidade mínima para notificar
 MIN_SEVERITY_TO_NOTIFY=MODERATE  # CRITICAL | MODERATE | LOW | NOT_A_PROBLEM
 
+# Idioma dos outputs (análises, planos, notificações)
+LANGUAGE=en  # en | pt-br
+
 # Slack
 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
 # ou, para usar a API com channel dinâmico:
@@ -439,6 +442,22 @@ DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 # Metrics
 METRICS_PORT=9090
 METRICS_ENABLED=true
+```
+
+## Idioma dos Outputs (LANGUAGE)
+
+O Octantis suporta geração de textos em inglês (`en`) ou português brasileiro (`pt-br`) via variável de ambiente `LANGUAGE`. Isso afeta todos os campos de texto livre gerados pelo LLM:
+
+- **Investigator**: resumo da investigação (`evidence_summary`)
+- **Analyzer**: `reasoning`, `similar_past_issues`
+- **Planner**: `title`, `summary`, `description`, `expected_outcome`, `risk`
+- **Notificações**: Slack e Discord recebem os textos no idioma configurado
+
+As chaves JSON (`severity`, `confidence`, `steps`, etc.) sempre permanecem em inglês para manter compatibilidade com parsing e métricas.
+
+```env
+LANGUAGE=pt-br  # notificações e análises em português
+LANGUAGE=en     # default — tudo em inglês
 ```
 
 ## Modos de Falha do Agente

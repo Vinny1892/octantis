@@ -82,3 +82,15 @@ def parse_llm_json(raw: str) -> Any:
         pass
 
     raise json.JSONDecodeError("No valid JSON found", raw, 0)
+
+
+_LANGUAGE_LABELS = {
+    "en": "English",
+    "pt-br": "Brazilian Portuguese (pt-BR)",
+}
+
+
+def language_instruction(lang: str) -> str:
+    """Return a prompt instruction line for the configured language."""
+    label = _LANGUAGE_LABELS.get(lang, _LANGUAGE_LABELS["en"])
+    return f"\nIMPORTANT: Write ALL free-text fields (reasoning, summary, descriptions, titles) in {label}. JSON keys must remain in English."

@@ -119,6 +119,7 @@ class Settings(BaseSettings):
     )
 
     log_level: str = "INFO"
+    language: Literal["en", "pt-br"] = "en"
     min_severity_to_notify: Literal["CRITICAL", "MODERATE", "LOW", "NOT_A_PROBLEM"] = "MODERATE"
 
     otlp: OTLPSettings = Field(default_factory=OTLPSettings)

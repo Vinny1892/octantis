@@ -219,6 +219,7 @@ Dependendo do que você quer entender ou modificar:
 |---|---|---|
 | `LOG_LEVEL` | `INFO` | `DEBUG / INFO / WARNING / ERROR` |
 | `MIN_SEVERITY_TO_NOTIFY` | `MODERATE` | Severidade mínima para acionar Slack/Discord |
+| `LANGUAGE` | `en` | Idioma dos outputs do LLM (`en`, `pt-br`) |
 | `LLM_PROVIDER` | `anthropic` | `anthropic` ou `openrouter` |
 | `LLM_MODEL` | `claude-sonnet-4-6` | Model ID para analyzer e planner |
 | `LLM_INVESTIGATION_MODEL` | (= LLM_MODEL) | Model ID para investigator (opcional) |

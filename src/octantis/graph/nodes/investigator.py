@@ -17,6 +17,7 @@ import structlog
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 
 from octantis.config import settings
+from octantis.graph.nodes.utils import language_instruction
 from octantis.graph.state import AgentState
 from octantis.models.event import InfraEvent, InvestigationResult, MCPQueryRecord
 
@@ -182,7 +183,9 @@ async def investigate_node(
     total_output_tokens = 0
 
     messages: list[BaseMessage] = [
-        SystemMessage(content=INVESTIGATION_SYSTEM_PROMPT),
+        SystemMessage(
+            content=INVESTIGATION_SYSTEM_PROMPT + language_instruction(settings.language)
+        ),
         HumanMessage(content=f"Investigate this infrastructure event:\n\n{trigger_context}"),
     ]
 

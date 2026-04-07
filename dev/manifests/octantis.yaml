@@ -25,7 +25,7 @@ spec:
     spec:
       containers:
         - name: octantis
-          image: ghcr.io/vinny1892/octantis:64e45c6
+          image: ghcr.io/vinny1892/octantis:dba131d
           ports:
             - name: otlp-grpc
               containerPort: 4317
@@ -47,7 +47,7 @@ spec:
             - name: LLM_PROVIDER
               value: "openrouter"
             - name: LLM_MODEL
-              value: "claude-sonnet-4-6"
+              value: "anthropic/claude-sonnet-4-6"
             - name: OPENROUTER_API_KEY
               valueFrom:
                 secretKeyRef:
@@ -101,6 +101,8 @@ spec:
 
             - name: MIN_SEVERITY_TO_NOTIFY
               value: "MODERATE"
+            - name: LANGUAGE
+              value: "pt-br"
             - name: LOG_LEVEL
               value: "DEBUG"
           resources:

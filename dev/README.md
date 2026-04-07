@@ -176,6 +176,7 @@ O agente Octantis roda no namespace `monitoring`.
 - **MCP**: Conecta ao `mcp-grafana` e `mcp-k8s` via SSE
 - **OTLP**: Recebe em `:4317` (gRPC) e `:4318` (HTTP)
 - **Métricas**: Exporta em `:9090/metrics` (scrapeado pelo Prometheus)
+- **Idioma**: `LANGUAGE=pt-br` (análises e notificações em português; default: `en`)
 - **Secrets**: Via variáveis de ambiente ou 1Password (ver [Secrets](#secrets))
 
 ### nginx-demo (`dev/manifests/nginx-demo.yaml`)
