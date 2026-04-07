@@ -67,12 +67,14 @@ O nó investigador é o coração do Octantis. Ele implementa um **ReAct loop** 
 
 O `MCPClientManager` (`src/octantis/mcp_client/manager.py:17`) gerencia conexões SSE com dois servidores MCP:
 
-| Servidor | Obrigatório | Ferramentas |
-|---|---|---|
-| **Grafana MCP** | Sim | PromQL queries, LogQL queries, dashboard search |
-| **K8s MCP** | Não (opcional) | Pod status, events, deployments, node info |
+| Servidor | Obrigatório | Imagem | Ferramentas |
+|---|---|---|---|
+| **Grafana MCP** | Sim | `ghcr.io/grafana/mcp-grafana:latest` | PromQL queries, LogQL queries, dashboard search |
+| **K8s MCP** | Não (recomendado) | `ghcr.io/containers/kubernetes-mcp-server:latest` | Pod status, events, deployments, node info |
 
-A conexão usa SSE (Server-Sent Events) com autenticação via Bearer token (`manager.py:46-67`). Se o K8s MCP não está configurado, o sistema funciona normalmente só com Grafana. Se o Grafana MCP falha na conexão, o servidor é marcado como **degraded** e o sistema entra em modo degradado.
+A conexão usa SSE (Server-Sent Events). O Grafana MCP autentica via Bearer token (service account do Grafana). O K8s MCP autentica via ServiceAccount do Kubernetes (RBAC in-cluster, sem credenciais externas).
+
+Se o K8s MCP não está configurado, o sistema funciona normalmente só com Grafana. Se o Grafana MCP falha na conexão, o servidor é marcado como **degraded** e o sistema entra em modo degradado (`manager.py:46-67`).
 
 ### O System Prompt
 

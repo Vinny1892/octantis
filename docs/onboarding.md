@@ -78,6 +78,31 @@ Saída esperada com `LOG_LEVEL=DEBUG`:
 2026-04-06T13:00:00Z [info] octantis.ready otlp_grpc=:4317 otlp_http=:4318 metrics=:9090
 ```
 
+### Opção 3 — Kind cluster (stack completo com Kubernetes)
+
+Cluster Kind local com Prometheus, Grafana, Mimir, OTel Collector, Grafana MCP, K8s MCP e Octantis. Ideal para testar o fluxo completo incluindo o MCP de Kubernetes.
+
+```bash
+# DNS local
+sudo bash dev/dns-setup.sh
+
+# Secrets via env vars ou 1Password (ver dev/README.md)
+export OPENROUTER_API_KEY="sk-or-..."
+export SLACK_WEBHOOK_URL="https://hooks.slack.com/services/..."
+export DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/..."
+
+# Subir o cluster
+bash dev/setup.sh
+```
+
+| Serviço | URL | Credenciais |
+|---|---|---|
+| Grafana | http://grafana.octantis.cluster.local | admin / admin |
+| Mimir API | http://mimir.octantis.cluster.local | — |
+| nginx-demo | http://demo.octantis.cluster.local | — |
+
+Pré-requisitos: Docker, Kind, kubectl, Helm. Ver [`dev/README.md`](../dev/README.md) para detalhes.
+
 ## Enviando um Evento de Teste
 
 Use `curl` para enviar um evento OTLP/HTTP diretamente ao Octantis:
@@ -201,7 +226,7 @@ Dependendo do que você quer entender ou modificar:
 | `OPENROUTER_API_KEY` | — | Chave OpenRouter (obrigatória se provider=openrouter) |
 | `GRAFANA_MCP_URL` | — | URL SSE do Grafana MCP (obrigatório) |
 | `GRAFANA_MCP_API_KEY` | — | API key do Grafana service account |
-| `K8S_MCP_URL` | — | URL SSE do K8s MCP (opcional, recomendado) |
+| `K8S_MCP_URL` | — | URL SSE do K8s MCP (recomendado). Imagem: `ghcr.io/containers/kubernetes-mcp-server:latest` |
 | `INVESTIGATION_MAX_QUERIES` | `10` | Máximo de queries MCP por investigação |
 | `INVESTIGATION_TIMEOUT_SECONDS` | `60` | Timeout total da investigação |
 | `INVESTIGATION_QUERY_TIMEOUT_SECONDS` | `10` | Timeout por query MCP |
