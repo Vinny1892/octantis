@@ -173,7 +173,7 @@ O agente Octantis roda no namespace `monitoring`.
 
 - **Imagem**: `ghcr.io/vinny1892/octantis:latest`
 - **LLM**: OpenRouter (`claude-sonnet-4-6`)
-- **MCP**: Conecta ao `mcp-grafana` local via SSE
+- **MCP**: Conecta ao `mcp-grafana` e `mcp-k8s` locais via SSE
 - **OTLP**: Recebe em `:4317` (gRPC) e `:4318` (HTTP)
 - **Métricas**: Exporta em `:9090/metrics` (scrapeado pelo Prometheus)
 - **Secrets**: Via variáveis de ambiente ou 1Password (ver [Secrets](#secrets))
