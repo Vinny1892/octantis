@@ -154,9 +154,9 @@ Métricas OTLP são convertidas e enviadas para Mimir via remote write. Traces e
 
 Servidor MCP (Model Context Protocol) que expõe ferramentas de query do Grafana via SSE. Roda no namespace `monitoring`.
 
-- **Imagem**: `ghcr.io/grafana/mcp-grafana:latest`
-- **Endpoint**: `mcp-grafana.monitoring.svc.cluster.local:8080/sse`
-- **Autenticação**: Service account token do Grafana, criado automaticamente pelo `setup.sh` e armazenado no secret `mcp-grafana-token`
+- **Imagem**: `ghcr.io/vinny1892/mcp-grafana:latest` (built from [grafana/mcp-grafana](https://github.com/grafana/mcp-grafana))
+- **Endpoint**: `mcp-grafana.monitoring.svc.cluster.local:8080/sse` (Service :8080 → container :8000)
+- **Autenticação**: Service account token do Grafana (`GRAFANA_SERVICE_ACCOUNT_TOKEN`), criado automaticamente pelo `setup.sh` e armazenado no secret `mcp-grafana-token`
 
 ### Kubernetes MCP Server (`dev/manifests/mcp-k8s.yaml`)
 

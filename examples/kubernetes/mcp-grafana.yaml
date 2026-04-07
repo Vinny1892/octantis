@@ -31,15 +31,15 @@ spec:
     spec:
       containers:
         - name: mcp-grafana
-          image: ghcr.io/grafana/mcp-grafana:latest
+          image: ghcr.io/vinny1892/mcp-grafana:latest
           ports:
             - name: sse
-              containerPort: 8080
+              containerPort: 8000
               protocol: TCP
           env:
             - name: GRAFANA_URL
               value: "http://grafana.monitoring.svc.cluster.local:3000"
-            - name: GRAFANA_API_KEY
+            - name: GRAFANA_SERVICE_ACCOUNT_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: octantis-secrets

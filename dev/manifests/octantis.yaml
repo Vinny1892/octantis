@@ -25,7 +25,7 @@ spec:
     spec:
       containers:
         - name: octantis
-          image: ghcr.io/vinny1892/octantis:latest
+          image: ghcr.io/vinny1892/octantis:64e45c6
           ports:
             - name: otlp-grpc
               containerPort: 4317

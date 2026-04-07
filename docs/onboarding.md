@@ -16,7 +16,7 @@ description: "Como subir o Octantis localmente e contribuir com o código"
 
 ### Opção 1 — Docker Compose (recomendado para testar)
 
-Stack completo: Octantis + Grafana MCP + Grafana + Prometheus + Loki + OTel Collector.
+Stack completo: Octantis + Grafana MCP (`ghcr.io/vinny1892/mcp-grafana`) + Grafana + Prometheus + Loki + OTel Collector.
 
 ```bash
 cd examples/docker-compose

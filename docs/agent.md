@@ -69,7 +69,7 @@ O `MCPClientManager` (`src/octantis/mcp_client/manager.py:17`) gerencia conexõe
 
 | Servidor | Obrigatório | Imagem | Ferramentas |
 |---|---|---|---|
-| **Grafana MCP** | Sim | `ghcr.io/grafana/mcp-grafana:latest` | PromQL queries, LogQL queries, dashboard search |
+| **Grafana MCP** | Sim | `ghcr.io/vinny1892/mcp-grafana:latest` | PromQL queries, LogQL queries, dashboard search |
 | **K8s MCP** | Não (recomendado) | `ghcr.io/containers/kubernetes-mcp-server:latest` | Pod status, events, deployments, node info |
 
 A conexão usa SSE (Server-Sent Events). O Grafana MCP autentica via Bearer token (service account do Grafana). O K8s MCP autentica via ServiceAccount do Kubernetes (RBAC in-cluster, sem credenciais externas).
