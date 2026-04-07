@@ -1,11 +1,10 @@
 """Planner node: uses LLM to generate a concrete remediation action plan."""
 
-import json
-
 import structlog
 from litellm import acompletion
 
 from octantis.config import settings
+from octantis.graph.nodes.utils import parse_llm_json
 from octantis.graph.state import AgentState
 from octantis.models.action_plan import ActionPlan, ActionStep, StepType
 
@@ -107,7 +106,7 @@ async def planner_node(state: AgentState) -> AgentState:
 
     raw_content = response.choices[0].message.content
     try:
-        data = json.loads(raw_content)
+        data = parse_llm_json(raw_content)
         # Coerce step types safely
         for step in data.get("steps", []):
             if "type" in step and step["type"] not in StepType._value2member_map_:

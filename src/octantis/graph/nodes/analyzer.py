@@ -6,6 +6,7 @@ import structlog
 from litellm import acompletion
 
 from octantis.config import settings
+from octantis.graph.nodes.utils import parse_llm_json
 from octantis.graph.state import AgentState
 from octantis.models.analysis import Severity, SeverityAnalysis
 
@@ -125,7 +126,7 @@ async def analyzer_node(state: AgentState) -> AgentState:
 
     raw_content = response.choices[0].message.content
     try:
-        data = json.loads(raw_content)
+        data = parse_llm_json(raw_content)
         analysis = SeverityAnalysis(**data)
     except Exception as exc:
         log.error("analyzer.parse_error", error=str(exc), raw=raw_content)
