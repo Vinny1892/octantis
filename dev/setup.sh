@@ -75,7 +75,7 @@ helm repo update
 # 3. Gateway API (nginx-gateway-fabric)
 # -----------------------------------------------
 echo "==> [3/5] Instalando Gateway API CRDs..."
-kubectl kustomize "https://github.com/nginx/nginx-gateway-fabric/config/crd/gateway-api/standard?ref=v2.5.0" | kubectl apply -f -
+kubectl kustomize "https://github.com/nginx/nginx-gateway-fabric/config/crd/gateway-api/standard?ref=v2.5.0" | kubectl apply -f - 2>&1 | grep -v "Warning: metadata.name"
 
 echo "==> [3/5] Instalando nginx-gateway-fabric (namespace: nginx-gateway)..."
 helm install ngf oci://ghcr.io/nginx/charts/nginx-gateway-fabric \

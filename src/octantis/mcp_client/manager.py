@@ -81,7 +81,9 @@ class MCPClientManager:
         headers: dict[str, str],
     ) -> None:
         """Open an SSE connection to *url* and load its tools."""
-        timeout = self._investigation_settings.query_timeout_seconds
+        timeout = self._investigation_settings.timeout_seconds
+        sse_cm = None
+        session_cm = None
         try:
             # Enter the SSE client context manager
             sse_cm = sse_client(url=url, headers=headers, timeout=timeout)
@@ -109,6 +111,19 @@ class MCPClientManager:
         except Exception:
             log.warning("mcp.connection_failed", server=name, url=url, exc_info=True)
             self._degraded_servers.append(name)
+            # Clean up partially opened contexts to avoid orphaned SSE readers
+            if session_cm is not None:
+                try:
+                    await session_cm.__aexit__(None, None, None)
+                except Exception:
+                    pass
+                self._session_contexts.pop(name, None)
+            if sse_cm is not None:
+                try:
+                    await sse_cm.__aexit__(None, None, None)
+                except Exception:
+                    pass
+                self._sse_contexts.pop(name, None)
 
     async def close(self) -> None:
         """Close all SSE connections and sessions."""

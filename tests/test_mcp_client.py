@@ -73,7 +73,7 @@ async def test_connect_grafana_success(
     mock_sse_client.assert_called_once_with(
         url="http://grafana-mcp:8080",
         headers={"Authorization": "Bearer test-api-key"},
-        timeout=5,
+        timeout=60,
     )
     session.initialize.assert_awaited_once()
     mock_load_tools.assert_awaited_once_with(session)
