@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from typing import Any
 
 import structlog
@@ -113,16 +114,12 @@ class MCPClientManager:
             self._degraded_servers.append(name)
             # Clean up partially opened contexts to avoid orphaned SSE readers
             if session_cm is not None:
-                try:
+                with contextlib.suppress(Exception):
                     await session_cm.__aexit__(None, None, None)
-                except Exception:
-                    pass
                 self._session_contexts.pop(name, None)
             if sse_cm is not None:
-                try:
+                with contextlib.suppress(Exception):
                     await sse_cm.__aexit__(None, None, None)
-                except Exception:
-                    pass
                 self._sse_contexts.pop(name, None)
 
     async def close(self) -> None:
