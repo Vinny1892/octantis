@@ -6,7 +6,8 @@ import json
 import re
 from typing import Any
 
-_FENCED_JSON_RE = re.compile(r"```(?:json)?\s*\n?(.*?)```", re.DOTALL)
+# Matches ```json ... ``` (closing fence optional for truncated responses)
+_FENCED_JSON_RE = re.compile(r"```(?:json)?\s*\n?(.*?)(?:```|$)", re.DOTALL)
 
 
 def parse_llm_json(raw: str) -> Any:
@@ -19,6 +20,8 @@ def parse_llm_json(raw: str) -> Any:
     # Try extracting from ```json ... ``` fences
     match = _FENCED_JSON_RE.search(raw)
     if match:
-        return json.loads(match.group(1).strip())
+        content = match.group(1).strip()
+        if content:
+            return json.loads(content)
 
     raise json.JSONDecodeError("No valid JSON found", raw, 0)
