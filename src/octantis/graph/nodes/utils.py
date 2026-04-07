@@ -41,8 +41,8 @@ def _repair_truncated_json(raw: str) -> Any:
     # Close everything that's open, trimming any trailing partial value
     # Remove trailing comma or partial key/value
     repaired = raw.rstrip()
-    repaired = re.sub(r',\s*$', '', repaired)
-    repaired = re.sub(r':\s*$', ': null', repaired)
+    repaired = re.sub(r",\s*$", "", repaired)
+    repaired = re.sub(r":\s*$", ": null", repaired)
     repaired = re.sub(r'"\w*$', '"', repaired)  # close partial string
 
     for bracket in reversed(opens):
