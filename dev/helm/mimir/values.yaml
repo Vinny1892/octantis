@@ -1,0 +1,128 @@
+mimir:
+  structuredConfig:
+    multitenancy_enabled: true
+
+    common:
+      storage:
+        backend: s3
+        s3:
+          endpoint: mimir-minio.mimir.svc:9000
+          access_key_id: mimir
+          secret_access_key: supersecret
+          insecure: true
+
+    blocks_storage:
+      backend: s3
+      s3:
+        bucket_name: mimir-tsdb
+      tsdb:
+        dir: /data/tsdb
+      bucket_store:
+        sync_dir: /data/tsdb-sync
+
+    alertmanager_storage:
+      backend: s3
+      s3:
+        bucket_name: mimir-ruler
+
+    ruler_storage:
+      backend: s3
+      s3:
+        bucket_name: mimir-ruler
+
+    limits:
+      ingestion_rate: 100000
+      max_global_series_per_user: 1500000
+
+minio:
+  enabled: true
+  rootUser: mimir
+  rootPassword: supersecret
+  buckets:
+    - name: mimir-tsdb
+      policy: none
+      purge: false
+    - name: mimir-ruler
+      policy: none
+      purge: false
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+distributor:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+ingester:
+  replicas: 1
+  zoneAwareReplication:
+    enabled: false
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+
+store_gateway:
+  replicas: 1
+  zoneAwareReplication:
+    enabled: false
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+compactor:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+querier:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+query_frontend:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
+query_scheduler:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
+ruler:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
+alertmanager:
+  enabled: false
+
+nginx:
+  enabled: true
+  replicas: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
+grafana-agent-operator:
+  enabled: false
+
+rollout_operator:
+  enabled: false

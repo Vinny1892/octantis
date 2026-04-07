@@ -1,0 +1,16 @@
+# Gateway resource for Octantis dev cluster
+# GatewayClass "nginx" is installed by nginx-gateway-fabric Helm chart
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: octantis-gateway
+  namespace: octantis
+spec:
+  gatewayClassName: nginx
+  listeners:
+    - name: http
+      port: 80
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: All

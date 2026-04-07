@@ -1,0 +1,23 @@
+# nginx-gateway-fabric for Kind dev cluster
+# Chart: oci://ghcr.io/nginx/charts/nginx-gateway-fabric v2.5.0
+# Replaces legacy ingress-nginx with Kubernetes Gateway API
+nginx:
+  replicas: 1
+  service:
+    type: NodePort
+    externalTrafficPolicy: Cluster
+    nodePorts:
+      - port: 31437
+        listenerPort: 80
+      - port: 30478
+        listenerPort: 443
+
+nginxGateway:
+  replicas: 1
+  gatewayClassName: nginx
+  metrics:
+    enable: true
+    port: 9113
+
+certGenerator:
+  enable: true

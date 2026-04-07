@@ -1,0 +1,35 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: nginx-gateway-fabric
+  namespace: nginx-gateway
+  labels:
+    release: prom
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nginx-gateway-fabric
+  namespaceSelector:
+    matchNames:
+      - nginx-gateway
+  endpoints:
+    - port: metrics
+      interval: 30s
+      path: /metrics
+---
+# Service to expose metrics port (NGF chart doesn't create one for metrics)
+apiVersion: v1
+kind: Service
+metadata:
+  name: ngf-metrics
+  namespace: nginx-gateway
+  labels:
+    app.kubernetes.io/name: nginx-gateway-fabric
+spec:
+  selector:
+    app.kubernetes.io/name: nginx-gateway-fabric
+  ports:
+    - name: metrics
+      port: 9113
+      targetPort: 9113
+      protocol: TCP

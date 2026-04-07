@@ -1,0 +1,57 @@
+# Grafana MCP Server for Octantis dev cluster
+# Connects to Grafana via service account token
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-grafana
+  namespace: monitoring
+  labels:
+    app: mcp-grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mcp-grafana
+  template:
+    metadata:
+      labels:
+        app: mcp-grafana
+    spec:
+      containers:
+        - name: mcp-grafana
+          image: ghcr.io/grafana/mcp-grafana:latest
+          ports:
+            - name: sse
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: GRAFANA_URL
+              value: "http://prom-grafana.monitoring.svc.cluster.local:80"
+            - name: GRAFANA_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: mcp-grafana-token
+                  key: token
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-grafana
+  namespace: monitoring
+  labels:
+    app: mcp-grafana
+spec:
+  selector:
+    app: mcp-grafana
+  ports:
+    - name: sse
+      port: 8080
+      targetPort: sse
+      protocol: TCP

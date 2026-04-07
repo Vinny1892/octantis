@@ -1,0 +1,143 @@
+# kube-prometheus-stack for Kind dev cluster
+# Adapted from k3s prod: modules/argocd/base/kube-prometheus/values.yaml
+
+# Grafana enabled as fallback monitoring UI
+grafana:
+  enabled: true
+  adminPassword: admin
+  persistence:
+    enabled: false
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+  "grafana.ini":
+    server:
+      enable_gzip: true
+    analytics:
+      check_for_updates: false
+    "auth.anonymous":
+      enabled: true
+      org_name: "Main Org."
+      org_role: Viewer
+  additionalDataSources:
+    - name: Mimir
+      type: prometheus
+      uid: mimir
+      access: proxy
+      url: http://mimir-gateway.mimir.svc.cluster.local/prometheus
+      isDefault: false
+      editable: true
+      jsonData:
+        httpHeaderName1: X-Scope-OrgID
+      secureJsonData:
+        httpHeaderValue1: dev
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      labelValue: "1"
+      searchNamespace: ALL
+
+# Alertmanager enabled
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      receiver: "null"
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 12h
+    receivers:
+      - name: "null"
+
+prometheusOperator:
+  enabled: true
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+prometheus:
+  enabled: true
+  prometheusSpec:
+    scrapeInterval: "30s"
+    evaluationInterval: "30s"
+    enableRemoteWriteReceiver: true
+
+    remoteWrite:
+      - url: "http://mimir-gateway.mimir.svc.cluster.local/api/v1/push"
+        headers:
+          X-Scope-OrgID: "dev"
+        queueConfig:
+          maxSamplesPerSend: 1000
+          maxShards: 5
+          capacity: 2500
+
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+
+    retention: 2h
+    retentionSize: "2GB"
+
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        memory: 1Gi
+
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi
+
+nodeExporter:
+  enabled: true
+
+prometheus-node-exporter:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 32Mi
+
+kubeStateMetrics:
+  enabled: true
+
+kube-state-metrics:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
+kubeEtcd:
+  enabled: false
+
+kubeScheduler:
+  enabled: false
+
+kubeControllerManager:
+  enabled: false
+
+kubeProxy:
+  enabled: false

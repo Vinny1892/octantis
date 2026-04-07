@@ -1,0 +1,33 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+
+name: octantis-dev
+
+nodes:
+  - role: control-plane
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+    extraPortMappings:
+      # Gateway API (HTTP/HTTPS)
+      - containerPort: 31437
+        hostPort: 80
+        protocol: TCP
+      - containerPort: 30478
+        hostPort: 443
+        protocol: TCP
+
+  - role: worker
+    extraMounts:
+      - hostPath: /tmp/octantis-dev/worker1
+        containerPath: /data
+        readOnly: false
+
+  - role: worker
+    extraMounts:
+      - hostPath: /tmp/octantis-dev/worker2
+        containerPath: /data
+        readOnly: false

@@ -1,0 +1,142 @@
+# Octantis agent deployment for Kind dev cluster
+# Requires:
+#   - Secret "octantis-secrets" with ANTHROPIC_API_KEY
+#   - mcp-grafana running in monitoring namespace
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: octantis
+  namespace: monitoring
+  labels:
+    app: octantis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: octantis
+  template:
+    metadata:
+      labels:
+        app: octantis
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: octantis
+          image: ghcr.io/vinny1892/octantis:latest
+          ports:
+            - name: otlp-grpc
+              containerPort: 4317
+              protocol: TCP
+            - name: otlp-http
+              containerPort: 4318
+              protocol: TCP
+            - name: metrics
+              containerPort: 9090
+              protocol: TCP
+          env:
+            # OTLP Receiver
+            - name: OTLP_GRPC_PORT
+              value: "4317"
+            - name: OTLP_HTTP_PORT
+              value: "4318"
+
+            # LLM
+            - name: LLM_PROVIDER
+              value: "openrouter"
+            - name: LLM_MODEL
+              value: "claude-sonnet-4-6"
+            - name: OPENROUTER_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: octantis-secrets
+                  key: OPENROUTER_API_KEY
+
+            # Grafana MCP
+            - name: GRAFANA_MCP_URL
+              value: "http://mcp-grafana.monitoring.svc.cluster.local:8080/sse"
+            - name: GRAFANA_MCP_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: mcp-grafana-token
+                  key: token
+
+            # Investigation
+            - name: INVESTIGATION_MAX_QUERIES
+              value: "10"
+            - name: INVESTIGATION_TIMEOUT_SECONDS
+              value: "60"
+
+            # Metrics
+            - name: METRICS_PORT
+              value: "9090"
+            - name: METRICS_ENABLED
+              value: "true"
+
+            # Pipeline
+            - name: PIPELINE_CPU_THRESHOLD
+              value: "75.0"
+            - name: PIPELINE_MEMORY_THRESHOLD
+              value: "80.0"
+            - name: PIPELINE_COOLDOWN_SECONDS
+              value: "300"
+
+            # Notifications
+            - name: SLACK_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: octantis-secrets
+                  key: SLACK_WEBHOOK_URL
+            - name: DISCORD_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: octantis-secrets
+                  key: DISCORD_WEBHOOK_URL
+
+            - name: MIN_SEVERITY_TO_NOTIFY
+              value: "MODERATE"
+            - name: LOG_LEVEL
+              value: "DEBUG"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          livenessProbe:
+            tcpSocket:
+              port: otlp-grpc
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            tcpSocket:
+              port: otlp-grpc
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: octantis
+  namespace: monitoring
+  labels:
+    app: octantis
+spec:
+  selector:
+    app: octantis
+  ports:
+    - name: otlp-grpc
+      port: 4317
+      targetPort: otlp-grpc
+      protocol: TCP
+    - name: otlp-http
+      port: 4318
+      targetPort: otlp-http
+      protocol: TCP
+    - name: metrics
+      port: 9090
+      targetPort: metrics
+      protocol: TCP
