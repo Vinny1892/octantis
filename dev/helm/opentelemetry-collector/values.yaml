@@ -1,5 +1,8 @@
 mode: deployment
 
+image:
+  repository: otel/opentelemetry-collector-contrib
+
 replicaCount: 1
 
 resources:
@@ -29,6 +32,16 @@ ports:
   zipkin:
     enabled: false
 
+# ServiceAccount + RBAC for prometheus receiver (scrape kube-state-metrics)
+serviceAccount:
+  create: true
+clusterRole:
+  create: true
+  rules:
+    - apiGroups: [""]
+      resources: ["pods", "nodes", "services", "endpoints"]
+      verbs: ["get", "list", "watch"]
+
 config:
   receivers:
     otlp:
@@ -38,6 +51,16 @@ config:
         http:
           endpoint: "0.0.0.0:4318"
 
+    # Scrape kube-state-metrics and forward to Octantis
+    prometheus:
+      config:
+        scrape_configs:
+          - job_name: kube-state-metrics
+            scrape_interval: 30s
+            static_configs:
+              - targets:
+                  - "prom-kube-state-metrics.monitoring.svc.cluster.local:8080"
+
   processors:
     memory_limiter:
       check_interval: 5s
@@ -46,6 +69,23 @@ config:
     batch:
       send_batch_size: 1000
       timeout: 10s
+    # Filter only metrics relevant to Octantis to avoid flooding it
+    filter/octantis:
+      metrics:
+        include:
+          match_type: regexp
+          metric_names:
+            - kube_pod_container_status_restarts_total
+            - kube_pod_status_phase
+            - kube_pod_container_status_waiting_reason
+            - kube_pod_container_status_terminated_reason
+            - kube_pod_container_status_last_terminated_reason
+            - kube_node_status_condition
+            - kube_deployment_status_replicas_unavailable
+            - kube_pod_container_resource_requests
+            - kube_pod_container_resource_limits
+            - container_cpu_usage_seconds_total
+            - container_memory_working_set_bytes
 
   exporters:
     prometheusremotewrite:
@@ -58,13 +98,24 @@ config:
         enabled: true
     debug:
       verbosity: normal
+    # Forward filtered metrics to Octantis via OTLP
+    otlp/octantis:
+      endpoint: "octantis.monitoring.svc.cluster.local:4317"
+      tls:
+        insecure: true
 
   service:
     pipelines:
-      metrics:
+      # Incoming OTLP → Mimir
+      metrics/otlp:
         receivers: [otlp]
         processors: [memory_limiter, batch]
         exporters: [prometheusremotewrite, debug]
+      # kube-state-metrics → filter → Octantis
+      metrics/k8s:
+        receivers: [prometheus]
+        processors: [memory_limiter, filter/octantis, batch]
+        exporters: [otlp/octantis]
       traces:
         receivers: [otlp]
         processors: [memory_limiter, batch]

@@ -109,6 +109,15 @@ helm install mimir grafana/mimir-distributed \
   --wait --timeout 5m
 
 # -----------------------------------------------
+# 6. OpenTelemetry Collector
+# -----------------------------------------------
+echo "==> [6/6] Instalando OpenTelemetry Collector (namespace: monitoring)..."
+helm install otel open-telemetry/opentelemetry-collector \
+  --namespace monitoring \
+  -f "$SCRIPT_DIR/helm/opentelemetry-collector/values.yaml" \
+  --wait --timeout 3m
+
+# -----------------------------------------------
 # Routes + ServiceMonitors
 # -----------------------------------------------
 echo ""
