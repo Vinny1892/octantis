@@ -1,62 +1,102 @@
 # Octantis
 
-Intelligent infrastructure monitoring agent for EKS/Kubernetes.
+Intelligent infrastructure monitoring agent for Kubernetes. Receives metrics via OTLP, uses an LLM to autonomously investigate and classify incidents, and notifies Slack/Discord with a concrete remediation plan.
 
-Receives OTel metrics/logs directly via OTLP (gRPC + HTTP), uses an LLM to assess
-true operational severity, and notifies Slack + Discord with a concrete remediation plan.
-
-## Architecture
+## How it works
 
 ```
-OTel Collector ──OTLP/gRPC:4317──► Octantis Agent → Slack / Discord
-OTel Collector ──OTLP/HTTP:4318──►       ↕
-                          Prometheus API / Kubernetes API / Grafana MCP
-                                         ↕
-                                  LLM (Anthropic / OpenRouter)
+OTel Collector ──OTLP──► Octantis ──MCP──► Grafana / Kubernetes API
+                              │
+                              ├── LLM (Anthropic / OpenRouter / Bedrock)
+                              │
+                              └──► Slack / Discord (remediation plan)
 ```
 
-## Quickstart
+1. **Receive** — OTLP metrics/logs from OpenTelemetry Collector (gRPC :4317, HTTP :4318)
+2. **Filter** — Drop health checks, benign patterns, and deduplicate via fingerprint cooldown
+3. **Investigate** — LLM autonomously queries Prometheus (PromQL), Loki (LogQL), and Kubernetes via MCP
+4. **Analyze** — Classify severity (CRITICAL / MODERATE / LOW / NOT_A_PROBLEM) with confidence score
+5. **Plan** — Generate actionable remediation steps with real `kubectl` commands
+6. **Notify** — Send to Slack and/or Discord (only if severity >= threshold)
+
+## Container Image
+
+```
+ghcr.io/vinny1892/octantis:latest
+```
+
+Published automatically by CI on every push to `master`. Pin to a specific commit SHA for production (e.g., `ghcr.io/vinny1892/octantis:dba131d`).
+
+## Quickstart — Kind Dev Cluster
+
+Octantis runs inside a Kubernetes cluster. The fastest way to try it is with the included Kind dev environment:
 
 ```bash
-# 1. Install dependencies
-uv sync
+# Prerequisites: Docker, Kind, kubectl, Helm
 
-# 2. Configure environment
-cp .env.example .env
-# Edit .env with your credentials
+# 1. Configure secrets
+export OPENROUTER_API_KEY="sk-or-..."
+export SLACK_WEBHOOK_URL="https://hooks.slack.com/services/..."
+export DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/..."
 
-# 3. Run (starts OTLP receivers on ports 4317/4318)
-uv run octantis
+# 2. Create the cluster (Kind + Prometheus + Grafana + Mimir + OTel + MetalLB + MCPs + Octantis)
+bash dev/setup.sh
 ```
 
-## Development
+This creates a full observability stack:
+
+| Service | URL |
+|---|---|
+| Grafana | http://grafana.octantis.cluster.local (admin/admin) |
+| Mimir API | http://mimir.octantis.cluster.local |
+| Octantis OTLP | octantis.monitoring.svc.cluster.local:4317 (gRPC) |
+
+See [`dev/README.md`](dev/README.md) for full details (architecture, secrets, troubleshooting).
+
+## Deploy to Your Cluster
+
+Example manifests for deploying Octantis + MCP servers to an existing Kubernetes cluster:
 
 ```bash
-# Run tests
-uv run pytest
+# 1. Create secrets
+kubectl create secret generic octantis-secrets \
+  --namespace monitoring \
+  --from-literal=ANTHROPIC_API_KEY=sk-ant-... \
+  --from-literal=GRAFANA_MCP_API_KEY=glsa_...
 
-# Run locally — configure OTel Collector to export to localhost:4317
-uv run octantis
+# 2. Deploy MCP servers + Octantis
+kubectl apply -f examples/kubernetes/
 ```
+
+See [`examples/kubernetes/`](examples/kubernetes/) for the manifests. Customize the image, model, and notification settings in the ConfigMap.
+
+Image: `ghcr.io/vinny1892/octantis:latest`
 
 ## Configuration
 
-All settings are via environment variables (see `.env.example`).
+All settings via environment variables. See [`.env.example`](.env.example) for the full list.
+
+Key settings:
 
 | Variable | Default | Description |
 |---|---|---|
-| `OTLP_GRPC_PORT` | `4317` | gRPC receiver port |
-| `OTLP_HTTP_PORT` | `4318` | HTTP receiver port |
-| `OTLP_GRPC_ENABLED` | `true` | Enable/disable gRPC transport |
-| `OTLP_HTTP_ENABLED` | `true` | Enable/disable HTTP transport |
-| `OTLP_QUEUE_MAX_SIZE` | `1000` | Max events buffered before drop |
-| `LLM_PROVIDER` | `anthropic` | `anthropic` or `openrouter` |
-| `LLM_MODEL` | `claude-sonnet-4-6` | Model name |
-| `PROMETHEUS_URL` | `http://prometheus:9090` | Prometheus base URL |
-| `K8S_IN_CLUSTER` | `false` | Use in-cluster K8s config |
-| `MIN_SEVERITY_TO_NOTIFY` | `MODERATE` | Min severity to send alerts |
-| `SLACK_WEBHOOK_URL` | — | Slack incoming webhook URL |
-| `DISCORD_WEBHOOK_URL` | — | Discord webhook URL |
+| `LLM_PROVIDER` | `anthropic` | `anthropic`, `openrouter`, or `bedrock` |
+| `LLM_MODEL` | `claude-sonnet-4-6` | Model ID (e.g., `anthropic/claude-sonnet-4-6` for OpenRouter, `global.anthropic.claude-opus-4-6-v1` for Bedrock) |
+| `GRAFANA_MCP_URL` | — | Grafana MCP SSE endpoint (required) |
+| `K8S_MCP_URL` | — | Kubernetes MCP SSE endpoint (recommended) |
+| `MIN_SEVERITY_TO_NOTIFY` | `MODERATE` | Minimum severity to send alerts |
+| `LANGUAGE` | `en` | Output language (`en`, `pt-br`) |
+| `SLACK_WEBHOOK_URL` | — | Slack notifications (empty = disabled) |
+| `DISCORD_WEBHOOK_URL` | — | Discord notifications (empty = disabled) |
+
+## MCP Servers
+
+Octantis connects to MCP servers via SSE for real-time cluster observability:
+
+| Server | Image | Purpose |
+|---|---|---|
+| Grafana MCP | `ghcr.io/vinny1892/mcp-grafana:latest` | PromQL, LogQL, dashboard queries |
+| Kubernetes MCP | `ghcr.io/containers/kubernetes-mcp-server:latest` | Pod status, events, deployments, logs |
 
 ## Severity Levels
 
@@ -64,19 +104,25 @@ All settings are via environment variables (see `.env.example`).
 |---|---|---|
 | `CRITICAL` | Service down / data loss risk | Notify + Action Plan |
 | `MODERATE` | Degraded / trending bad | Notify + Action Plan |
-| `LOW` | Minor anomaly | Log only (configurable) |
+| `LOW` | Minor anomaly | Log only |
 | `NOT_A_PROBLEM` | Expected / false positive | Log only |
 
-## Docker
+## Development
 
 ```bash
-docker build -t octantis .
-docker run --env-file .env octantis
+# Install dependencies
+uv sync
+
+# Run tests (98 tests, all mocked — no real LLM/MCP calls)
+uv run pytest
+
+# Lint
+uv run ruff check src/ tests/
 ```
 
 ## Documentation
 
 - [Overview](docs/overview.md) — architecture and design decisions
 - [Pipeline](docs/pipeline.md) — event ingestion and pre-filtering
-- [Agent](docs/agent.md) — LangGraph workflow (collect → analyze → plan → notify)
-- [Onboarding](docs/onboarding.md) — getting started guide
+- [Agent](docs/agent.md) — LangGraph workflow (investigate → analyze → plan → notify)
+- [Onboarding](docs/onboarding.md) — setup guide and code map

@@ -1,98 +1,54 @@
 ---
 title: "Onboarding — Zero to Running"
-description: "Como subir o Octantis localmente e contribuir com o código"
+description: "Como subir o Octantis e contribuir com o código"
 ---
 
 # Onboarding — Zero to Running
 
 ## Pré-requisitos
 
-- Python 3.12+
-- [`uv`](https://docs.astral.sh/uv/) instalado
-- Docker + Docker Compose (para stack local)
-- Chave de API Anthropic (`ANTHROPIC_API_KEY`)
+- [Docker](https://docs.docker.com/get-docker/)
+- [Kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installation)
+- [kubectl](https://kubernetes.io/docs/tasks/tools/)
+- [Helm](https://helm.sh/docs/intro/install/)
+- Para desenvolvimento local: Python 3.12+ e [`uv`](https://docs.astral.sh/uv/)
 
-## Setup em 5 minutos
+## Container Image
 
-### Opção 1 — Docker Compose (recomendado para testar)
+```
+ghcr.io/vinny1892/octantis:latest
+```
 
-Stack completo: Octantis + Grafana MCP (`ghcr.io/vinny1892/mcp-grafana`) + Grafana + Prometheus + Loki + OTel Collector.
+Publicada automaticamente pelo CI a cada push no `master`. Para produção, pine por commit SHA (e.g., `ghcr.io/vinny1892/octantis:dba131d`).
+
+## Setup — Kind Dev Cluster (recomendado)
+
+O Octantis roda dentro de um cluster Kubernetes. O jeito mais rápido de testar é com o ambiente de dev incluso, que sobe um cluster Kind com stack de observabilidade completa:
+
+- Prometheus + Grafana + Alertmanager (kube-prometheus-stack)
+- Mimir (TSDB de longo prazo)
+- OpenTelemetry Collector
+- MetalLB (LoadBalancer)
+- Grafana MCP (`ghcr.io/vinny1892/mcp-grafana:latest`)
+- Kubernetes MCP (`ghcr.io/containers/kubernetes-mcp-server:latest`)
+- Octantis (`ghcr.io/vinny1892/octantis:latest`)
 
 ```bash
-cd examples/docker-compose
-cp ../../.env.example .env
-# Edite .env e configure ANTHROPIC_API_KEY
+# 1. Configurar secrets (escolha uma opção)
 
-docker compose up -d
-```
-
-| Serviço | URL | Credenciais |
-|---|---|---|
-| Grafana | http://localhost:3000 | admin / admin |
-| Prometheus | http://localhost:9090 | — |
-| Octantis OTLP (gRPC) | localhost:4317 | — |
-| Octantis OTLP (HTTP) | localhost:4318 | — |
-| Octantis Metrics | http://localhost:9091/metrics | — |
-
-### Opção 2 — Desenvolvimento local
-
-```bash
-# 1. Clone e entre no diretório
-cd /home/vinny/repo/octantis
-
-# 2. Instale as dependências (uv cria o venv automaticamente)
-uv sync
-
-# 3. Configure o ambiente
-cp .env.example .env
-# Edite .env com suas chaves
-```
-
-Configuração mínima para rodar localmente:
-
-```env
-# .env mínimo para desenvolvimento
-ANTHROPIC_API_KEY=sk-ant-...
-
-# Grafana MCP (precisa de um mcp-grafana rodando)
-GRAFANA_MCP_URL=http://localhost:8080/sse
-GRAFANA_MCP_API_KEY=glsa_...
-
-LOG_LEVEL=DEBUG
-
-# Desabilitar notificações para não spammar Slack/Discord durante dev
-# (deixar as vars em branco desabilita o notifier)
-SLACK_WEBHOOK_URL=
-DISCORD_WEBHOOK_URL=
-```
-
-```bash
-uv run octantis
-```
-
-Saída esperada com `LOG_LEVEL=DEBUG`:
-
-```
-2026-04-06T13:00:00Z [info] octantis.starting version=0.2.0
-2026-04-06T13:00:00Z [info] mcp.connected server=grafana tools=5
-2026-04-06T13:00:00Z [info] octantis.ready otlp_grpc=:4317 otlp_http=:4318 metrics=:9090
-```
-
-### Opção 3 — Kind cluster (stack completo com Kubernetes)
-
-Cluster Kind local com Prometheus, Grafana, Mimir, OTel Collector, Grafana MCP, K8s MCP e Octantis. Ideal para testar o fluxo completo incluindo o MCP de Kubernetes.
-
-```bash
-# DNS local
-sudo bash dev/dns-setup.sh
-
-# Secrets via env vars ou 1Password (ver dev/README.md)
+# Opção A: variáveis de ambiente
 export OPENROUTER_API_KEY="sk-or-..."
 export SLACK_WEBHOOK_URL="https://hooks.slack.com/services/..."
 export DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/..."
 
-# Subir o cluster
+# Opção B: 1Password CLI (uma vez por máquina)
+bash dev/op-setup.sh
+
+# 2. Subir o cluster (~5 min)
 bash dev/setup.sh
+
+# Para recriar do zero
+bash dev/setup.sh --force
 ```
 
 | Serviço | URL | Credenciais |
@@ -101,14 +57,95 @@ bash dev/setup.sh
 | Mimir API | http://mimir.octantis.cluster.local | — |
 | nginx-demo | http://demo.octantis.cluster.local | — |
 
-Pré-requisitos: Docker, Kind, kubectl, Helm. Ver [`dev/README.md`](../dev/README.md) para detalhes.
+O `setup.sh` configura o DNS local automaticamente (MetalLB IP → `/etc/hosts`).
+
+Ver [`dev/README.md`](../dev/README.md) para detalhes completos (arquitetura, troubleshooting, secrets).
+
+## Deploy em Cluster Existente
+
+Para deploy em um cluster Kubernetes que já existe (EKS, GKE, AKS, etc.), use os manifests de exemplo:
+
+```bash
+# 1. Criar namespace e secrets
+kubectl create namespace monitoring
+kubectl create secret generic octantis-secrets \
+  --namespace monitoring \
+  --from-literal=ANTHROPIC_API_KEY=sk-ant-... \
+  --from-literal=GRAFANA_MCP_API_KEY=glsa_...
+
+# 2. Deploy MCP servers + Octantis
+kubectl apply -f examples/kubernetes/
+```
+
+Os manifests em [`examples/kubernetes/`](../examples/kubernetes/) incluem:
+
+| Manifesto | Descrição | Imagem |
+|---|---|---|
+| `octantis.yaml` | Deployment + Service + ConfigMap | `ghcr.io/vinny1892/octantis:latest` |
+| `mcp-grafana.yaml` | Grafana MCP Server | `ghcr.io/vinny1892/mcp-grafana:latest` |
+| `mcp-k8s.yaml` | Kubernetes MCP Server (read-only) | `ghcr.io/containers/kubernetes-mcp-server:latest` |
+
+Customize o ConfigMap em `octantis.yaml` para ajustar provider, modelo, notificações, etc.
+
+### Exemplo com Bedrock
+
+```yaml
+# No ConfigMap do octantis.yaml
+LLM_PROVIDER: "bedrock"
+LLM_MODEL: "global.anthropic.claude-opus-4-6-v1"
+# AWS_REGION_NAME via env var ou IAM role (IRSA no EKS)
+```
+
+## Desenvolvimento Local
+
+Para rodar o Octantis fora do cluster (desenvolvimento de código):
+
+```bash
+# 1. Instale as dependências
+uv sync
+
+# 2. Configure o ambiente
+cp .env.example .env
+# Edite .env com suas chaves
+```
+
+Configuração mínima:
+
+```env
+LLM_PROVIDER=anthropic
+ANTHROPIC_API_KEY=sk-ant-...
+
+# Grafana MCP (precisa de um mcp-grafana rodando — pode ser no Kind cluster)
+GRAFANA_MCP_URL=http://localhost:8080/sse
+GRAFANA_MCP_API_KEY=glsa_...
+
+LOG_LEVEL=DEBUG
+
+# Desabilitar notificações durante dev
+SLACK_WEBHOOK_URL=
+DISCORD_WEBHOOK_URL=
+```
+
+```bash
+uv run octantis
+```
+
+Saída esperada:
+
+```
+{"version":"0.2.0","event":"octantis.starting"}
+{"server":"grafana","tool_count":34,"event":"mcp.connected"}
+{"grpc_port":4317,"http_port":4318,"event":"octantis.ready"}
+```
+
+**Nota:** O Octantis depende de MCP servers para investigação. Sem Grafana MCP, ele opera em modo degradado (analisa só com dados do trigger). Sem Kubernetes MCP, perde contexto de pods/events mas funciona normalmente.
 
 ## Enviando um Evento de Teste
 
 Use `curl` para enviar um evento OTLP/HTTP diretamente ao Octantis:
 
 ```bash
-# Evento com CPU alta — deve passar pelo TriggerFilter e disparar investigação MCP
+# Evento com CPU alta — deve disparar investigação MCP
 curl -X POST http://localhost:4318/v1/metrics \
   -H "Content-Type: application/json" \
   -d '{
@@ -134,27 +171,7 @@ curl -X POST http://localhost:4318/v1/metrics \
   }'
 ```
 
-```bash
-# Evento benigno — deve ser dropado pelo TriggerFilter (HealthCheckRule)
-curl -X POST http://localhost:4318/v1/logs \
-  -H "Content-Type: application/json" \
-  -d '{
-    "resourceLogs": [{
-      "resource": {"attributes": [
-        {"key": "service.name", "value": {"stringValue": "api-server"}}
-      ]},
-      "scopeLogs": [{"logRecords": [
-        {"body": {"stringValue": "GET /healthz HTTP/1.1 200 OK"}, "severityText": "INFO"}
-      ]}]
-    }]
-  }'
-```
-
-Com `LOG_LEVEL=DEBUG`, o segundo evento deve gerar:
-
-```
-[debug] trigger.rule_matched rule=health_check decision=drop reason="health probe log: GET /healthz HTTP/1.1 200 OK"
-```
+No Kind cluster, os eventos reais já fluem automaticamente — o OTel Collector scrapa kube-state-metrics a cada 30s e encaminha para o Octantis.
 
 ## Rodando os Testes
 
@@ -181,35 +198,35 @@ uv run ruff format src/ tests/        # auto-format
 Dependendo do que você quer entender ou modificar:
 
 ### "Quero ajustar o que passa para o LLM"
-→ `src/octantis/pipeline/trigger_filter.py` — adicione/modifique regras
-→ `src/octantis/pipeline/cooldown.py:21` — ajuste o fingerprint
-→ `.env` — `PIPELINE_*` para tunar sem alterar código
+-> `src/octantis/pipeline/trigger_filter.py` — adicione/modifique regras
+-> `src/octantis/pipeline/cooldown.py:21` — ajuste o fingerprint
+-> `.env` — `PIPELINE_*` para tunar sem alterar código
 
 ### "Quero mudar como o LLM investiga os eventos"
-→ `src/octantis/graph/nodes/investigator.py:28` — `INVESTIGATION_SYSTEM_PROMPT`
-→ `src/octantis/mcp_client/manager.py` — conexão MCP e descoberta de ferramentas
-→ `.env` — `INVESTIGATION_*` para ajustar budget e timeouts
+-> `src/octantis/graph/nodes/investigator.py:28` — `INVESTIGATION_SYSTEM_PROMPT`
+-> `src/octantis/mcp_client/manager.py` — conexão MCP e descoberta de ferramentas
+-> `.env` — `INVESTIGATION_*` para ajustar budget e timeouts
 
 ### "Quero mudar como o LLM classifica os eventos"
-→ `src/octantis/graph/nodes/analyzer.py:14` — `SYSTEM_PROMPT`
-→ `src/octantis/models/analysis.py` — adicione campos ao `SeverityAnalysis`
+-> `src/octantis/graph/nodes/analyzer.py:14` — `SYSTEM_PROMPT`
+-> `src/octantis/models/analysis.py` — adicione campos ao `SeverityAnalysis`
 
 ### "Quero mudar o plano de ação gerado"
-→ `src/octantis/graph/nodes/planner.py:14` — `SYSTEM_PROMPT`
-→ `src/octantis/models/action_plan.py` — adicione `StepType` ou campos
+-> `src/octantis/graph/nodes/planner.py:14` — `SYSTEM_PROMPT`
+-> `src/octantis/models/action_plan.py` — adicione `StepType` ou campos
 
 ### "Quero adicionar um canal de notificação"
-→ Crie `src/octantis/notifiers/pagerduty.py` implementando `.send(investigation, analysis, action_plan)`
-→ Instancie e chame em `src/octantis/graph/nodes/notifier.py`
-→ Adicione settings em `src/octantis/config.py`
+-> Crie `src/octantis/notifiers/pagerduty.py` implementando `.send(investigation, analysis, action_plan)`
+-> Instancie e chame em `src/octantis/graph/nodes/notifier.py`
+-> Adicione settings em `src/octantis/config.py`
 
 ### "Quero adicionar métricas internas"
-→ `src/octantis/metrics.py` — defina novos Counters/Histograms
-→ Instrumente nos nós relevantes
+-> `src/octantis/metrics.py` — defina novos Counters/Histograms
+-> Instrumente nos nós relevantes
 
 ### "Quero entender o formato OTLP"
-→ `src/octantis/receivers/parser.py` — OTLP Protobuf/JSON → InfraEvent
-→ Os campos `resourceMetrics` e `resourceLogs` seguem o schema OTLP/JSON
+-> `src/octantis/receivers/parser.py` — OTLP Protobuf/JSON -> InfraEvent
+-> Os campos `resourceMetrics` e `resourceLogs` seguem o schema OTLP/JSON
 
 ---
 

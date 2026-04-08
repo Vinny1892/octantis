@@ -81,7 +81,7 @@ spec:
     spec:
       containers:
         - name: octantis
-          image: ghcr.io/YOUR_ORG/octantis:latest  # Replace with your image
+          image: ghcr.io/vinny1892/octantis:latest
           ports:
             - name: otlp-grpc
               containerPort: 4317
