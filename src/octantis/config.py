@@ -19,10 +19,11 @@ class OTLPSettings(BaseSettings):
 class LLMSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="LLM_", extra="ignore")
 
-    provider: Literal["anthropic", "openrouter"] = "anthropic"
+    provider: Literal["anthropic", "openrouter", "bedrock"] = "anthropic"
     model: str = "claude-sonnet-4-6"
     anthropic_api_key: str | None = Field(default=None, alias="ANTHROPIC_API_KEY")
     openrouter_api_key: str | None = Field(default=None, alias="OPENROUTER_API_KEY")
+    aws_region_name: str | None = Field(default=None, alias="AWS_REGION_NAME")
     max_tokens: int = 2048
     temperature: float = 0.1
 

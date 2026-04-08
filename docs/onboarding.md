@@ -220,11 +220,12 @@ Dependendo do que você quer entender ou modificar:
 | `LOG_LEVEL` | `INFO` | `DEBUG / INFO / WARNING / ERROR` |
 | `MIN_SEVERITY_TO_NOTIFY` | `MODERATE` | Severidade mínima para acionar Slack/Discord |
 | `LANGUAGE` | `en` | Idioma dos outputs do LLM (`en`, `pt-br`) |
-| `LLM_PROVIDER` | `anthropic` | `anthropic` ou `openrouter` |
+| `LLM_PROVIDER` | `anthropic` | `anthropic`, `openrouter` ou `bedrock` |
 | `LLM_MODEL` | `claude-sonnet-4-6` | Model ID para analyzer e planner |
 | `LLM_INVESTIGATION_MODEL` | (= LLM_MODEL) | Model ID para investigator (opcional) |
 | `ANTHROPIC_API_KEY` | — | Chave Anthropic (obrigatória se provider=anthropic) |
 | `OPENROUTER_API_KEY` | — | Chave OpenRouter (obrigatória se provider=openrouter) |
+| `AWS_REGION_NAME` | — | Região AWS (obrigatória se provider=bedrock). Credenciais via chain padrão AWS |
 | `GRAFANA_MCP_URL` | — | URL SSE do Grafana MCP (obrigatório) |
 | `GRAFANA_MCP_API_KEY` | — | API key do Grafana service account |
 | `K8S_MCP_URL` | — | URL SSE do K8s MCP (recomendado). Imagem: `ghcr.io/containers/kubernetes-mcp-server:latest` |

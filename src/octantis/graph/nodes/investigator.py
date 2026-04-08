@@ -17,7 +17,7 @@ import structlog
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 
 from octantis.config import settings
-from octantis.graph.nodes.utils import language_instruction
+from octantis.graph.nodes.utils import get_litellm_model, get_llm_api_key, language_instruction
 from octantis.graph.state import AgentState
 from octantis.models.event import InfraEvent, InvestigationResult, MCPQueryRecord
 
@@ -94,12 +94,6 @@ def _build_trigger_context(event: InfraEvent) -> str:
     return "\n".join(parts)
 
 
-def _get_litellm_model(provider: str, model: str) -> str:
-    if provider == "openrouter":
-        return f"openrouter/{model}"
-    return model
-
-
 def _classify_datasource(tool_name: str) -> str:
     """Classify a tool call into a datasource category."""
     name_lower = tool_name.lower()
@@ -164,12 +158,8 @@ async def investigate_node(
 
     # Run the ReAct investigation loop
     investigation_model = settings.investigation.model or settings.llm.model
-    model_id = _get_litellm_model(settings.llm.provider, investigation_model)
-    api_key = (
-        settings.llm.anthropic_api_key
-        if settings.llm.provider == "anthropic"
-        else settings.llm.openrouter_api_key
-    )
+    model_id = get_litellm_model(settings.llm.provider, investigation_model)
+    api_key = get_llm_api_key(settings.llm.provider)
 
     max_queries = settings.investigation.max_queries
     timeout = settings.investigation.timeout_seconds
@@ -229,17 +219,19 @@ async def investigate_node(
                             content="Query budget exhausted. Provide your final investigation summary based on the data collected so far."
                         )
                     )
-                    response = await acompletion(
-                        model=model_id,
-                        messages=[
+                    conclude_kwargs: dict = {
+                        "model": model_id,
+                        "messages": [
                             {"role": m.type if m.type != "human" else "user", "content": m.content}
                             for m in messages
                             if isinstance(m.content, str)
                         ],
-                        max_tokens=settings.llm.max_tokens,
-                        temperature=settings.llm.temperature,
-                        api_key=api_key,
-                    )
+                        "max_tokens": settings.llm.max_tokens,
+                        "temperature": settings.llm.temperature,
+                    }
+                    if api_key:
+                        conclude_kwargs["api_key"] = api_key
+                    response = await acompletion(**conclude_kwargs)
                     usage = response.get("usage", {})
                     total_input_tokens += getattr(usage, "prompt_tokens", 0)
                     total_output_tokens += getattr(usage, "completion_tokens", 0)
@@ -279,14 +271,16 @@ async def investigate_node(
                             }
                         )
 
-                response = await acompletion(
-                    model=model_id,
-                    messages=litellm_messages,
-                    tools=tool_schemas if tools else None,
-                    max_tokens=settings.llm.max_tokens,
-                    temperature=settings.llm.temperature,
-                    api_key=api_key,
-                )
+                react_kwargs: dict = {
+                    "model": model_id,
+                    "messages": litellm_messages,
+                    "tools": tool_schemas if tools else None,
+                    "max_tokens": settings.llm.max_tokens,
+                    "temperature": settings.llm.temperature,
+                }
+                if api_key:
+                    react_kwargs["api_key"] = api_key
+                response = await acompletion(**react_kwargs)
 
                 usage = response.get("usage", {})
                 total_input_tokens += getattr(usage, "prompt_tokens", 0)

@@ -405,12 +405,18 @@ histogram_quantile(0.95, rate(octantis_investigation_duration_seconds_bucket[5m]
 
 ```env
 # LLM
-LLM_PROVIDER=anthropic               # ou openrouter
+LLM_PROVIDER=anthropic               # ou openrouter, bedrock
 LLM_MODEL=claude-sonnet-4-6
 ANTHROPIC_API_KEY=sk-ant-...
 
 # Investigation model (opcional — default: LLM_MODEL)
 # LLM_INVESTIGATION_MODEL=claude-opus-4-6
+
+# Para Bedrock (inference profiles):
+# LLM_PROVIDER=bedrock
+# LLM_MODEL=global.anthropic.claude-opus-4-6-v1
+# AWS_REGION_NAME=us-east-1
+# Credenciais: env vars (AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY), IRSA, ou instance profile
 
 # Grafana MCP (obrigatório)
 GRAFANA_MCP_URL=http://mcp-grafana:8080/sse

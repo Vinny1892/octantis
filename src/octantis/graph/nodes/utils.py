@@ -94,3 +94,24 @@ def language_instruction(lang: str) -> str:
     """Return a prompt instruction line for the configured language."""
     label = _LANGUAGE_LABELS.get(lang, _LANGUAGE_LABELS["en"])
     return f"\nIMPORTANT: Write ALL free-text fields (reasoning, summary, descriptions, titles) in {label}. JSON keys must remain in English."
+
+
+def get_litellm_model(provider: str, model: str) -> str:
+    """Return the litellm model string for the given provider."""
+    if provider == "openrouter":
+        return f"openrouter/{model}"
+    if provider == "bedrock":
+        return f"bedrock/{model}"
+    return model
+
+
+def get_llm_api_key(provider: str) -> str | None:
+    """Return the API key for the provider, or None for Bedrock (uses AWS credential chain)."""
+    from octantis.config import settings
+
+    if provider == "anthropic":
+        return settings.llm.anthropic_api_key
+    if provider == "openrouter":
+        return settings.llm.openrouter_api_key
+    # Bedrock: boto3 handles auth via AWS credential chain
+    return None

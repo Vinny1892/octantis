@@ -4,7 +4,12 @@ import structlog
 from litellm import acompletion
 
 from octantis.config import settings
-from octantis.graph.nodes.utils import language_instruction, parse_llm_json
+from octantis.graph.nodes.utils import (
+    get_litellm_model,
+    get_llm_api_key,
+    language_instruction,
+    parse_llm_json,
+)
 from octantis.graph.state import AgentState
 from octantis.models.action_plan import ActionPlan, ActionStep, StepType
 
@@ -64,35 +69,28 @@ Deployment: {event.resource.k8s_deployment_name or "unknown"}
 """
 
 
-def _get_litellm_model(provider: str, model: str) -> str:
-    if provider == "openrouter":
-        return f"openrouter/{model}"
-    return model
-
-
 async def planner_node(state: AgentState) -> AgentState:
     """Call LLM to generate remediation action plan."""
     event_id = state["investigation"].original_event.event_id
     log.info("planner.start", event_id=event_id, severity=state["analysis"].severity)
 
-    model = _get_litellm_model(settings.llm.provider, settings.llm.model)
-    api_key = (
-        settings.llm.anthropic_api_key
-        if settings.llm.provider == "anthropic"
-        else settings.llm.openrouter_api_key
-    )
+    model = get_litellm_model(settings.llm.provider, settings.llm.model)
+    api_key = get_llm_api_key(settings.llm.provider)
 
-    response = await acompletion(
-        model=model,
-        messages=[
+    kwargs: dict = {
+        "model": model,
+        "messages": [
             {"role": "system", "content": SYSTEM_PROMPT + language_instruction(settings.language)},
             {"role": "user", "content": _build_user_message(state)},
         ],
-        max_tokens=settings.llm.max_tokens,
-        temperature=settings.llm.temperature,
-        api_key=api_key,
-        response_format={"type": "json_object"},
-    )
+        "max_tokens": settings.llm.max_tokens,
+        "temperature": settings.llm.temperature,
+        "response_format": {"type": "json_object"},
+    }
+    if api_key:
+        kwargs["api_key"] = api_key
+
+    response = await acompletion(**kwargs)
 
     usage = response.get("usage", {})
     input_tokens = getattr(usage, "prompt_tokens", 0)
