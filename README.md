@@ -43,14 +43,6 @@ export DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/..."
 bash dev/setup.sh
 ```
 
-This creates a full observability stack:
-
-| Service | URL |
-|---|---|
-| Grafana | http://grafana.octantis.cluster.local (admin/admin) |
-| Mimir API | http://mimir.octantis.cluster.local |
-| Octantis OTLP | octantis.monitoring.svc.cluster.local:4317 (gRPC) |
-
 See [`dev/README.md`](dev/README.md) for full details (architecture, secrets, troubleshooting).
 
 ## Deploy to Your Cluster
