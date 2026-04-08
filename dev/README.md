@@ -41,7 +41,7 @@ bash dev/setup.sh --force
 flowchart TD
     subgraph kind["Kind Cluster (octantis-dev)"]
         subgraph ngw["nginx-gateway"]
-            GW["nginx-gateway-fabric\n:80 → NodePort 31437"]:::infra
+            GW["nginx-gateway-fabric\n:80 LoadBalancer (MetalLB)"]:::infra
         end
 
         subgraph mon["monitoring"]
@@ -64,9 +64,11 @@ flowchart TD
         end
     end
 
-    HOST["Host\n:80 → Kind control-plane"]:::ext
+    HOST["Host"]:::ext
+    MLB["MetalLB\n(L2 advertisement)"]:::infra
 
-    HOST -->|"*.octantis.cluster.local"| GW
+    HOST -->|"*.octantis.cluster.local"| MLB
+    MLB --> GW
     GW -->|"grafana.octantis.cluster.local"| GRAF
     GW -->|"mimir.octantis.cluster.local"| MIMIR
     GW -->|"demo.octantis.cluster.local"| DEMO
@@ -89,18 +91,17 @@ flowchart TD
 
 ### Kind Cluster (`dev/kind/kind-config.yaml`)
 
-Cluster com 1 control-plane + 2 workers. O control-plane expõe NodePorts no host:
+Cluster com 1 control-plane + 2 workers. Workers montam `/tmp/octantis-dev/worker{1,2}` como `/data` para persistent volumes.
 
-| NodePort | Host Port | Uso |
-|----------|-----------|-----|
-| 31437 | 80 | HTTP (Gateway API) |
-| 30478 | 443 | HTTPS (Gateway API) |
+### MetalLB
 
-Workers montam `/tmp/octantis-dev/worker{1,2}` como `/data` para persistent volumes.
+LoadBalancer para Kind. Instalado via Helm no namespace `metallb-system`. O `setup.sh` detecta automaticamente a subnet Docker do Kind e aloca um range `/28` (e.g., `172.18.255.200-172.18.255.250`) para IPs de LoadBalancer.
+
+Isso permite usar `type: LoadBalancer` nos Services ao invés de NodePort.
 
 ### nginx-gateway-fabric (`dev/helm/nginx-gateway-fabric/values.yaml`)
 
-Gateway API implementation via NGINX. Substitui ingress-nginx tradicional. Cria o service `octantis-gateway-nginx` como NodePort na porta 31437, que o Kind mapeia para `:80` no host.
+Gateway API implementation via NGINX. Substitui ingress-nginx tradicional. O service `ngf-nginx-gateway-fabric` é do tipo LoadBalancer — o MetalLB atribui um IP acessível da máquina host.
 
 O Gateway resource (`dev/manifests/gateway.yaml`) aceita HTTPRoutes de todos os namespaces.
 
@@ -185,7 +186,7 @@ Deployment simples de NGINX no namespace `octantis` para testar conectividade do
 
 ## DNS Local (`dev/dns-setup.sh`)
 
-Adiciona entradas no `/etc/hosts` para resolver os domínios do cluster:
+Adiciona entradas no `/etc/hosts` para resolver os domínios do cluster, apontando para o IP do LoadBalancer (MetalLB):
 
 | Domínio | Serviço |
 |---------|---------|
@@ -193,7 +194,13 @@ Adiciona entradas no `/etc/hosts` para resolver os domínios do cluster:
 | `mimir.octantis.cluster.local` | Mimir API |
 | `demo.octantis.cluster.local` | nginx-demo |
 
-O tráfego chega em `127.0.0.1:80` → Kind NodePort 31437 → nginx-gateway-fabric → HTTPRoute → Service destino.
+O `setup.sh` configura o DNS automaticamente. Se precisar reconfigurar manualmente:
+
+```bash
+sudo bash dev/dns-setup.sh
+```
+
+O tráfego chega no IP do MetalLB → nginx-gateway-fabric (LoadBalancer) → HTTPRoute → Service destino.
 
 Para remover: `sudo bash dev/dns-cleanup.sh`
 
@@ -263,7 +270,7 @@ Nas execuções seguintes, o `setup.sh` lê automaticamente via `op read "op://L
 | `dev/setup.sh` | Sobe o cluster completo (Kind + Helm charts + manifests + secrets). Idempotente — se o cluster já existe, exibe aviso e sai |
 | `dev/setup.sh --force` | Destrói o cluster existente e recria tudo do zero |
 | `dev/teardown.sh` | Deleta o cluster Kind e limpa dados locais |
-| `dev/dns-setup.sh` | Configura `/etc/hosts` para `*.octantis.cluster.local` (requer sudo) |
+| `dev/dns-setup.sh` | Configura `/etc/hosts` com IP do LoadBalancer (requer sudo) |
 | `dev/dns-cleanup.sh` | Remove entradas do `/etc/hosts` (requer sudo) |
 | `dev/op-setup.sh` | Cria item `octantis-dev` no 1Password vault `Local` |
 
@@ -291,6 +298,7 @@ dev/
     ├── gateway.yaml                      # Gateway resource (aceita HTTPRoutes de todos ns)
     ├── grafana-route.yaml                # HTTPRoute + ReferenceGrant para Grafana
     ├── mimir-route.yaml                  # HTTPRoute para Mimir API
+    ├── metallb-config.yaml               # IPAddressPool + L2Advertisement (MetalLB)
     ├── mcp-grafana.yaml                  # Deployment + Service do MCP Grafana
     ├── mcp-k8s.yaml                      # ServiceAccount + RBAC + Deployment + Service do MCP K8s
     ├── octantis.yaml                     # Deployment + Service do Octantis

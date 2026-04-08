@@ -11,14 +11,6 @@ nodes:
         nodeRegistration:
           kubeletExtraArgs:
             node-labels: "ingress-ready=true"
-    extraPortMappings:
-      # Gateway API (HTTP/HTTPS)
-      - containerPort: 31437
-        hostPort: 80
-        protocol: TCP
-      - containerPort: 30478
-        hostPort: 443
-        protocol: TCP
 
   - role: worker
     extraMounts:

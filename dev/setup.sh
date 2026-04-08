@@ -49,13 +49,13 @@ fi
 # -----------------------------------------------
 # 1. Kind cluster
 # -----------------------------------------------
-echo "==> [1/5] Criando diretórios de dados para Kind workers..."
+echo "==> [1/6] Criando diretórios de dados para Kind workers..."
 mkdir -p /tmp/octantis-dev/worker1 /tmp/octantis-dev/worker2
 
-echo "==> [1/5] Criando cluster Kind..."
+echo "==> [1/6] Criando cluster Kind..."
 kind create cluster --config "$SCRIPT_DIR/kind/kind-config.yaml"
 
-echo "==> [1/5] Exportando kubeconfig..."
+echo "==> [1/6] Exportando kubeconfig..."
 KUBECONFIG_PATH="$PROJECT_DIR/tmp/kubeconfig.yaml"
 mkdir -p "$(dirname "$KUBECONFIG_PATH")"
 kind get kubeconfig --name "$CLUSTER_NAME" > "$KUBECONFIG_PATH"
@@ -65,19 +65,38 @@ echo "  KUBECONFIG=$KUBECONFIG_PATH"
 # -----------------------------------------------
 # 2. Helm repos
 # -----------------------------------------------
-echo "==> [2/5] Adicionando repositórios Helm..."
+echo "==> [2/6] Adicionando repositórios Helm..."
 helm repo add grafana https://grafana.github.io/helm-charts 2>/dev/null || true
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts 2>/dev/null || true
 helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts 2>/dev/null || true
+helm repo add metallb https://metallb.github.io/metallb 2>/dev/null || true
 helm repo update
 
 # -----------------------------------------------
-# 3. Gateway API (nginx-gateway-fabric)
+# 3. MetalLB (LoadBalancer for Kind)
 # -----------------------------------------------
-echo "==> [3/5] Instalando Gateway API CRDs..."
+echo "==> [3/6] Instalando MetalLB (namespace: metallb-system)..."
+helm install metallb metallb/metallb \
+  --namespace metallb-system --create-namespace \
+  --wait --timeout 3m
+
+# Determine Kind Docker network subnet and allocate a /28 range for MetalLB
+KIND_NET_CIDR=$(docker network inspect kind -f '{{(index .IPAM.Config 0).Subnet}}')
+# Extract base (e.g., 172.18.0.0/16 → 172.18) and use .255.200-255.250
+KIND_NET_PREFIX=$(echo "$KIND_NET_CIDR" | cut -d. -f1-2)
+METALLB_RANGE="${KIND_NET_PREFIX}.255.200-${KIND_NET_PREFIX}.255.250"
+
+echo "  Kind network: $KIND_NET_CIDR → MetalLB range: $METALLB_RANGE"
+
+sed "s|METALLB_IP_RANGE|$METALLB_RANGE|" "$SCRIPT_DIR/manifests/metallb-config.yaml" | kubectl apply -f -
+
+# -----------------------------------------------
+# 4. Gateway API (nginx-gateway-fabric)
+# -----------------------------------------------
+echo "==> [4/6] Instalando Gateway API CRDs..."
 kubectl kustomize "https://github.com/nginx/nginx-gateway-fabric/config/crd/gateway-api/standard?ref=v2.5.0" | kubectl apply -f - 2>&1 | grep -v "Warning: metadata.name"
 
-echo "==> [3/5] Instalando nginx-gateway-fabric (namespace: nginx-gateway)..."
+echo "==> [4/6] Instalando nginx-gateway-fabric (namespace: nginx-gateway)..."
 helm install ngf oci://ghcr.io/nginx/charts/nginx-gateway-fabric \
   --version 2.5.0 \
   --namespace nginx-gateway --create-namespace \
@@ -85,9 +104,9 @@ helm install ngf oci://ghcr.io/nginx/charts/nginx-gateway-fabric \
   --wait --timeout 3m
 
 # -----------------------------------------------
-# 4. kube-prometheus-stack (Prometheus + Grafana)
+# 5. kube-prometheus-stack (Prometheus + Grafana)
 # -----------------------------------------------
-echo "==> [4/5] Instalando kube-prometheus-stack (namespace: monitoring)..."
+echo "==> [5/6] Instalando kube-prometheus-stack (namespace: monitoring)..."
 helm install prom prometheus-community/kube-prometheus-stack \
   --version 82.17.1 \
   --namespace monitoring --create-namespace \
@@ -95,13 +114,13 @@ helm install prom prometheus-community/kube-prometheus-stack \
   --wait --timeout 5m
 
 # -----------------------------------------------
-# 5. Mimir (TSDB) + Namespace + Gateway + Routes
+# 6. Mimir (TSDB) + Namespace + Gateway + Routes
 # -----------------------------------------------
-echo "==> [5/5] Criando namespace e Gateway resource..."
+echo "==> [6/6] Criando namespace e Gateway resource..."
 kubectl create namespace octantis --dry-run=client -o yaml | kubectl apply -f -
 kubectl apply -f "$SCRIPT_DIR/manifests/gateway.yaml"
 
-echo "==> [5/5] Instalando Mimir (namespace: mimir)..."
+echo "==> [6/6] Instalando Mimir (namespace: mimir)..."
 helm install mimir grafana/mimir-distributed \
   --version 6.0.2 \
   --namespace mimir --create-namespace \
@@ -242,11 +261,28 @@ echo "  Secret octantis-secrets criado"
 echo "==> Instalando Octantis (namespace: monitoring)..."
 kubectl apply -f "$SCRIPT_DIR/manifests/octantis.yaml"
 
+# -----------------------------------------------
+# DNS local (auto-detect LoadBalancer IP)
+# -----------------------------------------------
+echo ""
+echo "==> Configurando DNS local..."
+LB_IP=$(kubectl get svc -n nginx-gateway ngf-nginx-gateway-fabric -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
+if [ -n "$LB_IP" ]; then
+  sudo sed -i "/# octantis-dev/d" /etc/hosts
+  for domain in demo.octantis.cluster.local grafana.octantis.cluster.local mimir.octantis.cluster.local; do
+    echo "$LB_IP $domain # octantis-dev" | sudo tee -a /etc/hosts > /dev/null
+  done
+  echo "  DNS: *.octantis.cluster.local → $LB_IP"
+else
+  echo "  ⚠ LoadBalancer IP não disponível — execute 'sudo bash dev/dns-setup.sh' manualmente"
+fi
+
 echo ""
 echo "============================================"
 echo "  Ambiente pronto!"
 echo "============================================"
 echo ""
+echo "  Gateway LB:  ${LB_IP:-<pendente>}"
 echo "  http://grafana.octantis.cluster.local     Grafana (admin/admin)"
 echo "  http://mimir.octantis.cluster.local       Mimir (API)"
 echo "  http://demo.octantis.cluster.local        nginx-demo (teste)"

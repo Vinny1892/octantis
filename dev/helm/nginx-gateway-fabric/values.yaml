@@ -4,13 +4,8 @@
 nginx:
   replicas: 1
   service:
-    type: NodePort
+    type: LoadBalancer
     externalTrafficPolicy: Cluster
-    nodePorts:
-      - port: 31437
-        listenerPort: 80
-      - port: 30478
-        listenerPort: 443
 
 nginxGateway:
   replicas: 1

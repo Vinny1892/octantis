@@ -1,0 +1,19 @@
+# MetalLB L2 advertisement for Kind dev cluster
+# IP range is determined dynamically by setup.sh based on the Kind Docker network
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: kind-pool
+  namespace: metallb-system
+spec:
+  addresses:
+    - METALLB_IP_RANGE  # replaced by setup.sh
+---
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: kind-l2
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+    - kind-pool
