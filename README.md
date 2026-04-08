@@ -1,6 +1,6 @@
 # Octantis
 
-Intelligent infrastructure monitoring agent for Kubernetes. Receives metrics via OTLP, uses an LLM to autonomously investigate and classify incidents, and notifies Slack/Discord with a concrete remediation plan.
+Intelligent infrastructure monitoring agent. Receives metrics and logs via OTLP, uses an LLM to autonomously investigate and classify incidents, and notifies Slack/Discord with a concrete remediation plan.
 
 ## How it works
 
@@ -14,7 +14,7 @@ OTel Collector ──OTLP──► Octantis ──MCP──► Grafana / Kuberne
 
 1. **Receive** — OTLP metrics/logs from OpenTelemetry Collector (gRPC :4317, HTTP :4318)
 2. **Filter** — Drop health checks, benign patterns, and deduplicate via fingerprint cooldown
-3. **Investigate** — LLM autonomously queries Prometheus (PromQL), Loki (LogQL), and Kubernetes via MCP
+3. **Investigate** — LLM autonomously queries Prometheus (PromQL), Loki (LogQL), and optionally Kubernetes via MCP
 4. **Analyze** — Classify severity (CRITICAL / MODERATE / LOW / NOT_A_PROBLEM) with confidence score
 5. **Plan** — Generate actionable remediation steps with real `kubectl` commands
 6. **Notify** — Send to Slack and/or Discord (only if severity >= threshold)
@@ -29,7 +29,7 @@ Published automatically by CI on every push to `master`. Pin to a specific commi
 
 ## Quickstart — Kind Dev Cluster
 
-Octantis runs inside a Kubernetes cluster. The fastest way to try it is with the included Kind dev environment:
+The fastest way to try Octantis is with the included Kind dev environment, which sets up a full observability stack:
 
 ```bash
 # Prerequisites: Docker, Kind, kubectl, Helm
@@ -45,9 +45,9 @@ bash dev/setup.sh
 
 See [`dev/README.md`](dev/README.md) for full details (architecture, secrets, troubleshooting).
 
-## Deploy to Your Cluster
+## Deploy to a Kubernetes Cluster
 
-Example manifests for deploying Octantis + MCP servers to an existing Kubernetes cluster:
+Example manifests for deploying Octantis + MCP servers to an existing cluster:
 
 ```bash
 # 1. Create secrets
@@ -114,7 +114,7 @@ uv run ruff check src/ tests/
 
 ## Documentation
 
-- [Overview](docs/overview.md) — architecture and design decisions
-- [Pipeline](docs/pipeline.md) — event ingestion and pre-filtering
-- [Agent](docs/agent.md) — LangGraph workflow (investigate → analyze → plan → notify)
+- [Architecture Overview](docs/overview.md) — data flow and design decisions
+- [Filter Pipeline](docs/pipeline.md) — event ingestion and pre-filtering
+- [LangGraph Agent](docs/agent.md) — investigation, analysis, planning, and notification
 - [Onboarding](docs/onboarding.md) — setup guide and code map

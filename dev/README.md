@@ -1,40 +1,40 @@
-# Ambiente de Desenvolvimento
+# Development Environment
 
-Cluster Kind local com stack de observabilidade completa para desenvolvimento e testes do Octantis.
+Local Kind cluster with a full observability stack for Octantis development and testing.
 
-## Pré-requisitos
+## Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/)
 - [Kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installation)
 - [kubectl](https://kubernetes.io/docs/tasks/tools/)
 - [Helm](https://helm.sh/docs/intro/install/)
-- [1Password CLI](https://developer.1password.com/docs/cli/get-started/) (`op`) — *opcional, alternativa: variáveis de ambiente*
+- [1Password CLI](https://developer.1password.com/docs/cli/get-started/) (`op`) — *optional, alternative: environment variables*
 
-## Setup Rápido
+## Quick Setup
 
 ```bash
-# 1. Configurar DNS local (requer sudo)
+# 1. Configure local DNS (requires sudo)
 sudo bash dev/dns-setup.sh
 
-# 2. Configurar secrets (escolha uma opção)
+# 2. Configure secrets (choose one option)
 
-# Opção A: variáveis de ambiente (sem 1Password)
+# Option A: environment variables (without 1Password)
 export OPENROUTER_API_KEY="sk-or-..."
 export SLACK_WEBHOOK_URL="https://hooks.slack.com/services/..."
 export DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/..."
 
-# Opção B: 1Password (uma vez por máquina)
+# Option B: 1Password (once per machine)
 bash dev/op-setup.sh
-# Edite os valores no 1Password com as chaves reais
+# Edit values in 1Password with real keys
 
-# 3. Subir o cluster
+# 3. Create the cluster
 bash dev/setup.sh
 
-# Para recriar do zero (destrói e recria)
+# To recreate from scratch (destroys and recreates)
 bash dev/setup.sh --force
 ```
 
-## Arquitetura do Cluster
+## Cluster Architecture
 
 ```mermaid
 %%{init: {"theme": "dark", "themeVariables": {"primaryColor": "#2d333b", "primaryBorderColor": "#6d5dfc", "primaryTextColor": "#e6edf3", "lineColor": "#8b949e", "secondaryColor": "#161b22"}}}%%
@@ -60,7 +60,7 @@ flowchart TD
 
         subgraph oct["octantis"]
             GWRES["Gateway resource\n(octantis-gateway)"]:::infra
-            DEMO["nginx-demo\n(teste)"]:::infra
+            DEMO["nginx-demo\n(test)"]:::infra
         end
     end
 
@@ -87,44 +87,44 @@ flowchart TD
     classDef app fill:#2d333b,stroke:#6d5dfc,color:#e6edf3
 ```
 
-## Componentes
+## Components
 
 ### Kind Cluster (`dev/kind/kind-config.yaml`)
 
-Cluster com 1 control-plane + 2 workers. Workers montam `/tmp/octantis-dev/worker{1,2}` como `/data` para persistent volumes.
+Cluster with 1 control-plane + 2 workers. Workers mount `/tmp/octantis-dev/worker{1,2}` as `/data` for persistent volumes.
 
 ### MetalLB
 
-LoadBalancer para Kind. Instalado via Helm no namespace `metallb-system`. O `setup.sh` detecta automaticamente a subnet Docker do Kind e aloca um range `/28` (e.g., `172.18.255.200-172.18.255.250`) para IPs de LoadBalancer.
+LoadBalancer for Kind. Installed via Helm in the `metallb-system` namespace. The `setup.sh` script automatically detects the Docker Kind subnet and allocates a `/28` range (e.g., `172.18.255.200-172.18.255.250`) for LoadBalancer IPs.
 
-Isso permite usar `type: LoadBalancer` nos Services ao invés de NodePort.
+This allows using `type: LoadBalancer` on Services instead of NodePort.
 
 ### nginx-gateway-fabric (`dev/helm/nginx-gateway-fabric/values.yaml`)
 
-Gateway API implementation via NGINX. Substitui ingress-nginx tradicional. O service `ngf-nginx-gateway-fabric` é do tipo LoadBalancer — o MetalLB atribui um IP acessível da máquina host.
+Gateway API implementation via NGINX. Replaces traditional ingress-nginx. The `ngf-nginx-gateway-fabric` service is of type LoadBalancer — MetalLB assigns an IP accessible from the host machine.
 
-O Gateway resource (`dev/manifests/gateway.yaml`) aceita HTTPRoutes de todos os namespaces.
+The Gateway resource (`dev/manifests/gateway.yaml`) accepts HTTPRoutes from all namespaces.
 
 ### kube-prometheus-stack (`dev/helm/kube-prometheus-stack/values.yaml`)
 
-Stack completa de monitoramento no namespace `monitoring`:
+Full monitoring stack in the `monitoring` namespace:
 
-| Componente | Configuração |
-|------------|-------------|
-| **Prometheus** | Scrape 30s, retention 2h/2GB, remote_write para Mimir |
-| **Grafana** | admin/admin, anonymous viewer, datasources Prometheus + Mimir |
-| **Alertmanager** | Habilitado, receiver null (sem notificações) |
-| **node-exporter** | Métricas do host |
-| **kube-state-metrics** | Métricas do cluster |
+| Component | Configuration |
+|-----------|---------------|
+| **Prometheus** | 30s scrape, 2h/2GB retention, remote_write to Mimir |
+| **Grafana** | admin/admin, anonymous viewer, Prometheus + Mimir datasources |
+| **Alertmanager** | Enabled, null receiver (no notifications) |
+| **node-exporter** | Host metrics |
+| **kube-state-metrics** | Cluster metrics |
 
-Prometheus faz remote_write para Mimir com header `X-Scope-OrgID: dev` para retenção de longo prazo. Retenção local é curta (2h) porque Mimir é o storage primário.
+Prometheus does remote_write to Mimir with the `X-Scope-OrgID: dev` header for long-term retention. Local retention is short (2h) because Mimir is the primary storage.
 
 ### Mimir (`dev/helm/mimir/values.yaml`)
 
-TSDB distribuído para métricas de longo prazo, no namespace `mimir`. Multitenancy habilitado com tenant `dev`.
+Distributed TSDB for long-term metrics, in the `mimir` namespace. Multitenancy enabled with tenant `dev`.
 
-| Componente | Réplicas |
-|------------|----------|
+| Component | Replicas |
+|-----------|----------|
 | distributor | 1 |
 | ingester | 1 |
 | querier | 1 |
@@ -133,15 +133,15 @@ TSDB distribuído para métricas de longo prazo, no namespace `mimir`. Multitena
 | store-gateway | 1 |
 | compactor | 1 |
 | nginx (gateway) | 1 |
-| **MinIO** | 1 (object storage local) |
+| **MinIO** | 1 (local object storage) |
 
-MinIO serve como S3-compatible storage para blocks, ruler e alertmanager. Credenciais: `mimir`/`supersecret`.
+MinIO serves as S3-compatible storage for blocks, ruler, and alertmanager. Credentials: `mimir`/`supersecret`.
 
-O datasource Mimir no Grafana aponta para `http://mimir-gateway.mimir.svc.cluster.local/prometheus` com header `X-Scope-OrgID: dev`.
+The Mimir datasource in Grafana points to `http://mimir-gateway.mimir.svc.cluster.local/prometheus` with the `X-Scope-OrgID: dev` header.
 
 ### OpenTelemetry Collector (`dev/helm/opentelemetry-collector/values.yaml`)
 
-Collector em modo deployment (1 réplica). Recebe OTLP gRPC (:4317) e HTTP (:4318).
+Collector in deployment mode (1 replica). Receives OTLP gRPC (:4317) and HTTP (:4318).
 
 | Pipeline | Receivers | Exporters |
 |----------|-----------|-----------|
@@ -149,79 +149,79 @@ Collector em modo deployment (1 réplica). Recebe OTLP gRPC (:4317) e HTTP (:431
 | traces | otlp | debug |
 | logs | otlp | debug |
 
-Métricas OTLP são convertidas e enviadas para Mimir via remote write. Traces e logs atualmente só vão para debug (stdout).
+OTLP metrics are converted and sent to Mimir via remote write. Traces and logs currently only go to debug (stdout).
 
 ### Grafana MCP Server (`dev/manifests/mcp-grafana.yaml`)
 
-Servidor MCP (Model Context Protocol) que expõe ferramentas de query do Grafana via SSE. Roda no namespace `monitoring`.
+MCP server (Model Context Protocol) that exposes Grafana query tools via SSE. Runs in the `monitoring` namespace.
 
-- **Imagem**: `ghcr.io/vinny1892/mcp-grafana:latest` (built from [grafana/mcp-grafana](https://github.com/grafana/mcp-grafana))
+- **Image**: `ghcr.io/vinny1892/mcp-grafana:latest` (built from [grafana/mcp-grafana](https://github.com/grafana/mcp-grafana))
 - **Endpoint**: `mcp-grafana.monitoring.svc.cluster.local:8080/sse` (Service :8080 → container :8000)
-- **Autenticação**: Service account token do Grafana (`GRAFANA_SERVICE_ACCOUNT_TOKEN`), criado automaticamente pelo `setup.sh` e armazenado no secret `mcp-grafana-token`
+- **Authentication**: Grafana service account token (`GRAFANA_SERVICE_ACCOUNT_TOKEN`), automatically created by `setup.sh` and stored in the secret `mcp-grafana-token`
 
 ### Kubernetes MCP Server (`dev/manifests/mcp-k8s.yaml`)
 
-Servidor MCP que expõe queries de recursos Kubernetes via SSE. Roda no namespace `monitoring` com acesso read-only ao cluster.
+MCP server that exposes Kubernetes resource queries via SSE. Runs in the `monitoring` namespace with read-only access to the cluster.
 
-- **Imagem**: `ghcr.io/containers/kubernetes-mcp-server:latest`
+- **Image**: `ghcr.io/containers/kubernetes-mcp-server:latest`
 - **Endpoint**: `mcp-k8s.monitoring.svc.cluster.local:8080/sse`
-- **Autenticação**: ServiceAccount `mcp-k8s` com ClusterRole read-only (pods, deployments, services, events, etc.)
-- **Modo**: `--read-only` (não permite modificações no cluster)
+- **Authentication**: ServiceAccount `mcp-k8s` with read-only ClusterRole (pods, deployments, services, events, etc.)
+- **Mode**: `--read-only` (does not allow cluster modifications)
 
 ### Octantis (`dev/manifests/octantis.yaml`)
 
-O agente Octantis roda no namespace `monitoring`.
+The Octantis agent runs in the `monitoring` namespace.
 
-- **Imagem**: `ghcr.io/vinny1892/octantis:latest`
+- **Image**: `ghcr.io/vinny1892/octantis:latest`
 - **LLM**: OpenRouter (`claude-sonnet-4-6`)
-- **MCP**: Conecta ao `mcp-grafana` e `mcp-k8s` via SSE
-- **OTLP**: Recebe em `:4317` (gRPC) e `:4318` (HTTP)
-- **Métricas**: Exporta em `:9090/metrics` (scrapeado pelo Prometheus)
-- **Idioma**: `LANGUAGE=pt-br` (análises e notificações em português; default: `en`)
-- **Secrets**: Via variáveis de ambiente ou 1Password (ver [Secrets](#secrets))
+- **MCP**: Connects to `mcp-grafana` and `mcp-k8s` via SSE
+- **OTLP**: Receives on `:4317` (gRPC) and `:4318` (HTTP)
+- **Metrics**: Exports on `:9090/metrics` (scraped by Prometheus)
+- **Language**: `LANGUAGE=pt-br` (analyses and notifications in Portuguese; default: `en`)
+- **Secrets**: Via environment variables or 1Password (see [Secrets](#secrets))
 
 ### nginx-demo (`dev/manifests/nginx-demo.yaml`)
 
-Deployment simples de NGINX no namespace `octantis` para testar conectividade do Gateway. Acessível em `http://demo.octantis.cluster.local`.
+Simple NGINX deployment in the `octantis` namespace to test Gateway connectivity. Accessible at `http://demo.octantis.cluster.local`.
 
-## DNS Local (`dev/dns-setup.sh`)
+## Local DNS (`dev/dns-setup.sh`)
 
-Adiciona entradas no `/etc/hosts` para resolver os domínios do cluster, apontando para o IP do LoadBalancer (MetalLB):
+Adds entries to `/etc/hosts` to resolve cluster domains, pointing to the LoadBalancer IP (MetalLB):
 
-| Domínio | Serviço |
-|---------|---------|
+| Domain | Service |
+|--------|---------|
 | `grafana.octantis.cluster.local` | Grafana UI |
 | `mimir.octantis.cluster.local` | Mimir API |
 | `demo.octantis.cluster.local` | nginx-demo |
 
-O `setup.sh` configura o DNS automaticamente. Se precisar reconfigurar manualmente:
+The `setup.sh` script configures DNS automatically. To reconfigure manually:
 
 ```bash
 sudo bash dev/dns-setup.sh
 ```
 
-O tráfego chega no IP do MetalLB → nginx-gateway-fabric (LoadBalancer) → HTTPRoute → Service destino.
+Traffic reaches the MetalLB IP → nginx-gateway-fabric (LoadBalancer) → HTTPRoute → target Service.
 
-Para remover: `sudo bash dev/dns-cleanup.sh`
+To remove: `sudo bash dev/dns-cleanup.sh`
 
 ## Secrets
 
-O Octantis precisa de 3 secrets para funcionar:
+Octantis needs 3 secrets to operate:
 
-| Variável | Descrição |
-|----------|-----------|
-| `OPENROUTER_API_KEY` | Chave da API OpenRouter para o LLM |
-| `SLACK_WEBHOOK_URL` | Incoming webhook do Slack para notificações |
-| `DISCORD_WEBHOOK_URL` | Webhook do Discord para notificações |
+| Variable | Description |
+|----------|-------------|
+| `OPENROUTER_API_KEY` | OpenRouter API key for the LLM |
+| `SLACK_WEBHOOK_URL` | Slack incoming webhook for notifications |
+| `DISCORD_WEBHOOK_URL` | Discord webhook for notifications |
 
-O `setup.sh` aceita duas formas de fornecer essas secrets, com a seguinte prioridade:
+The `setup.sh` script accepts two ways to provide these secrets, with the following priority:
 
-1. **Variáveis de ambiente** — se já estiverem definidas no shell, são usadas diretamente
-2. **1Password CLI** — se `op` estiver instalado e autenticado, lê do vault `Local`
+1. **Environment variables** — if already set in the shell, they are used directly
+2. **1Password CLI** — if `op` is installed and authenticated, reads from the `Local` vault
 
-### Opção 1: Variáveis de ambiente
+### Option 1: Environment Variables
 
-Para quem não usa 1Password. Exporte as variáveis antes de rodar o setup:
+For those not using 1Password. Export the variables before running setup:
 
 ```bash
 export OPENROUTER_API_KEY="sk-or-..."
@@ -231,7 +231,7 @@ export DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/..."
 bash dev/setup.sh
 ```
 
-Ou em uma linha:
+Or in a single line:
 
 ```bash
 OPENROUTER_API_KEY="sk-or-..." \
@@ -240,21 +240,21 @@ DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/..." \
 bash dev/setup.sh
 ```
 
-### Opção 2: 1Password CLI
+### Option 2: 1Password CLI
 
-Para quem usa 1Password. Configure uma vez por máquina:
+For those using 1Password. Configure once per machine:
 
 ```bash
-# Cria o item com valores placeholder
+# Create item with placeholder values
 bash dev/op-setup.sh
 
-# Edite com os valores reais
+# Edit with real values
 op item edit octantis-dev --vault Local 'OPENROUTER_API_KEY=sk-or-...'
 op item edit octantis-dev --vault Local 'SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...'
 op item edit octantis-dev --vault Local 'DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...'
 ```
 
-Nas execuções seguintes, o `setup.sh` lê automaticamente via `op read "op://Local/octantis-dev/..."`.
+On subsequent runs, `setup.sh` reads automatically via `op read "op://Local/octantis-dev/..."`.
 
 ## ServiceMonitors
 
@@ -265,83 +265,83 @@ Nas execuções seguintes, o `setup.sh` lê automaticamente via `op read "op://L
 
 ## Scripts
 
-| Script | Descrição |
-|--------|-----------|
-| `dev/setup.sh` | Sobe o cluster completo (Kind + Helm charts + manifests + secrets). Idempotente — se o cluster já existe, exibe aviso e sai |
-| `dev/setup.sh --force` | Destrói o cluster existente e recria tudo do zero |
-| `dev/teardown.sh` | Deleta o cluster Kind e limpa dados locais |
-| `dev/dns-setup.sh` | Configura `/etc/hosts` com IP do LoadBalancer (requer sudo) |
-| `dev/dns-cleanup.sh` | Remove entradas do `/etc/hosts` (requer sudo) |
-| `dev/op-setup.sh` | Cria item `octantis-dev` no 1Password vault `Local` |
+| Script | Description |
+|--------|-------------|
+| `dev/setup.sh` | Creates the full cluster (Kind + Helm charts + manifests + secrets). Idempotent — if the cluster already exists, shows a warning and exits |
+| `dev/setup.sh --force` | Destroys the existing cluster and recreates everything from scratch |
+| `dev/teardown.sh` | Deletes the Kind cluster and cleans up local data |
+| `dev/dns-setup.sh` | Configures `/etc/hosts` with the LoadBalancer IP (requires sudo) |
+| `dev/dns-cleanup.sh` | Removes entries from `/etc/hosts` (requires sudo) |
+| `dev/op-setup.sh` | Creates `octantis-dev` item in the 1Password `Local` vault |
 
-## Estrutura de Arquivos
+## File Structure
 
 ```
 dev/
-├── setup.sh                              # Script principal de setup
-├── teardown.sh                           # Destruir cluster
-├── dns-setup.sh                          # DNS local (*.octantis.cluster.local)
-├── dns-cleanup.sh                        # Limpar DNS local
-├── op-setup.sh                           # Criar item no 1Password
+├── setup.sh                              # Main setup script
+├── teardown.sh                           # Destroy cluster
+├── dns-setup.sh                          # Local DNS (*.octantis.cluster.local)
+├── dns-cleanup.sh                        # Clean local DNS
+├── op-setup.sh                           # Create 1Password item
 ├── kind/
-│   └── kind-config.yaml                  # 1 control-plane + 2 workers, NodePort mappings
+│   └── kind-config.yaml                  # 1 control-plane + 2 workers
 ├── helm/
 │   ├── kube-prometheus-stack/
 │   │   └── values.yaml                   # Prometheus + Grafana + Alertmanager
 │   ├── mimir/
 │   │   └── values.yaml                   # Mimir distributed + MinIO
 │   ├── nginx-gateway-fabric/
-│   │   └── values.yaml                   # Gateway API controller (NodePort)
+│   │   └── values.yaml                   # Gateway API controller
 │   └── opentelemetry-collector/
 │       └── values.yaml                   # OTel Collector → Mimir remote write
 └── manifests/
-    ├── gateway.yaml                      # Gateway resource (aceita HTTPRoutes de todos ns)
-    ├── grafana-route.yaml                # HTTPRoute + ReferenceGrant para Grafana
-    ├── mimir-route.yaml                  # HTTPRoute para Mimir API
+    ├── gateway.yaml                      # Gateway resource (accepts HTTPRoutes from all ns)
+    ├── grafana-route.yaml                # HTTPRoute + ReferenceGrant for Grafana
+    ├── mimir-route.yaml                  # HTTPRoute for Mimir API
     ├── metallb-config.yaml               # IPAddressPool + L2Advertisement (MetalLB)
-    ├── mcp-grafana.yaml                  # Deployment + Service do MCP Grafana
-    ├── mcp-k8s.yaml                      # ServiceAccount + RBAC + Deployment + Service do MCP K8s
-    ├── octantis.yaml                     # Deployment + Service do Octantis
-    ├── nginx-demo.yaml                   # Deployment + Service + HTTPRoute (teste)
-    └── ngf-servicemonitor.yaml           # ServiceMonitor para nginx-gateway-fabric
+    ├── mcp-grafana.yaml                  # Deployment + Service for MCP Grafana
+    ├── mcp-k8s.yaml                      # ServiceAccount + RBAC + Deployment + Service for MCP K8s
+    ├── octantis.yaml                     # Deployment + Service for Octantis
+    ├── nginx-demo.yaml                   # Deployment + Service + HTTPRoute (test)
+    └── ngf-servicemonitor.yaml           # ServiceMonitor for nginx-gateway-fabric
 ```
 
 ## Troubleshooting
 
-### Gateway retorna 404
+### Gateway returns 404
 
-O HTTPRoute pode não ter sido aceito. Verifique:
+The HTTPRoute may not have been accepted. Check:
 
 ```bash
 kubectl get httproute -A
-kubectl describe httproute <nome> -n <namespace>
+kubectl describe httproute <name> -n <namespace>
 ```
 
-Se o status não tem `Accepted: True`, verifique se o ReferenceGrant existe (necessário para routes cross-namespace).
+If the status doesn't have `Accepted: True`, check if the ReferenceGrant exists (required for cross-namespace routes).
 
-### Grafana MCP não conecta
+### Grafana MCP not connecting
 
 ```bash
 kubectl logs -n monitoring deploy/mcp-grafana
 kubectl get secret mcp-grafana-token -n monitoring -o jsonpath='{.data.token}' | base64 -d
 ```
 
-Se o token estiver vazio, recrie via Grafana API ou re-execute o setup.
+If the token is empty, recreate via Grafana API or re-run the setup.
 
-### Octantis em CrashLoopBackoff
+### Octantis in CrashLoopBackoff
 
 ```bash
 kubectl logs -n monitoring deploy/octantis
 kubectl get secret octantis-secrets -n monitoring -o yaml
 ```
 
-Causas comuns: `OPENROUTER_API_KEY` com valor `change-me` (edite no 1Password), MCP Grafana não está rodando.
+Common causes: `OPENROUTER_API_KEY` with value `change-me` (edit in 1Password), MCP Grafana not running.
 
-### DNS não resolve
+### DNS not resolving
 
 ```bash
 grep octantis /etc/hosts
 curl -H "Host: grafana.octantis.cluster.local" http://127.0.0.1
 ```
 
-Se o curl funciona mas o browser não, o `/etc/hosts` pode não ter sido atualizado. Re-execute `sudo bash dev/dns-setup.sh`.
+If curl works but the browser doesn't, `/etc/hosts` may not have been updated. Re-run `sudo bash dev/dns-setup.sh`.

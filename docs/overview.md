@@ -1,26 +1,26 @@
 ---
-title: "Octantis — Visão Geral da Arquitetura"
-description: "Como o agente de monitoramento inteligente funciona de ponta a ponta"
+title: "Octantis — Architecture Overview"
+description: "How the intelligent monitoring agent works end-to-end"
 ---
 
-# Octantis — Visão Geral da Arquitetura
+# Octantis — Architecture Overview
 
-Octantis é um agente de IA que monitora infraestrutura EKS/Kubernetes de forma inteligente. Em vez de disparar alertas para todo threshold breachado, ele usa um LLM para avaliar o **impacto operacional real** — distinguindo um crash genuíno de um falso positivo de uma métrica ruidosa.
+Octantis is an AI agent that intelligently monitors infrastructure. Instead of firing alerts for every breached threshold, it uses an LLM to evaluate the **real operational impact** — distinguishing a genuine crash from a false positive or a noisy metric.
 
-## O Problema que o Octantis Resolve
+## The Problem Octantis Solves
 
-Sistemas de monitoramento tradicionais geram alertas baseados em thresholds simples:
-- "CPU > 80% → alerta"
-- "Restarts > 2 → alerta"
+Traditional monitoring systems generate alerts based on simple thresholds:
+- "CPU > 80% → alert"
+- "Restarts > 2 → alert"
 
-Isso resulta em **alert fatigue**: a equipe ignora os alertas porque 90% são ruído. O Octantis inverte a lógica — ao invés de alertar por threshold, ele **investiga autonomamente** via MCP (Model Context Protocol), consultando Grafana (PromQL/LogQL) e Kubernetes para montar o contexto completo antes de decidir se o problema merece atenção humana.
+This results in **alert fatigue**: teams ignore alerts because 90% are noise. Octantis inverts the logic — instead of alerting on thresholds, it **autonomously investigates** via MCP (Model Context Protocol), querying Grafana (PromQL/LogQL) and optionally Kubernetes to build the full context before deciding whether the problem deserves human attention.
 
-## Fluxo de Dados Completo
+## Complete Data Flow
 
 ```mermaid
 %%{init: {"theme": "dark", "themeVariables": {"primaryColor": "#2d333b", "primaryBorderColor": "#6d5dfc", "primaryTextColor": "#e6edf3", "lineColor": "#8b949e", "secondaryColor": "#161b22", "tertiaryColor": "#1c2128"}}}%%
 flowchart TD
-    OC["OTel Collector\n(serviços K8s)"]:::ext
+    OC["OTel Collector\n(infrastructure services)"]:::ext
 
     subgraph receiver["OTLP Receiver  (src/octantis/receivers/)"]
         GRPC["gRPC Server\n:4317"]:::pipe
@@ -28,22 +28,22 @@ flowchart TD
         QUEUE["asyncio.Queue\nInfraEvent"]:::pipe
     end
 
-    subgraph pipeline["Pipeline de Filtragem  (src/octantis/pipeline/)"]
-        TF["TriggerFilter\nRegras determinísticas"]:::pipe
-        CD["FingerprintCooldown\nDeduplicação por fingerprint"]:::pipe
+    subgraph pipeline["Filter Pipeline  (src/octantis/pipeline/)"]
+        TF["TriggerFilter\nDeterministic rules"]:::pipe
+        CD["FingerprintCooldown\nFingerprint deduplication"]:::pipe
     end
 
     subgraph agent["LangGraph Workflow  (src/octantis/graph/)"]
         INV["investigate\nReAct loop via MCP"]:::node
-        AN["analyze\nLLM classifica severidade"]:::node
+        AN["analyze\nLLM classifies severity"]:::node
         RT{{"should_notify?\nCRITICAL / MODERATE"}}:::cond
-        PL["plan\nLLM gera plano de ação"]:::node
+        PL["plan\nLLM generates action plan"]:::node
         NO["notify\nSlack + Discord"]:::node
     end
 
     subgraph mcp["MCP Servers"]
         GF["Grafana MCP\nPromQL / LogQL"]:::ext
-        K8["K8s MCP\n(opcional)"]:::ext
+        K8["K8s MCP\n(optional)"]:::ext
     end
 
     OC -->|"OTLP/gRPC"| GRPC
@@ -53,13 +53,13 @@ flowchart TD
     QUEUE -->|"AsyncIterator[InfraEvent]"| TF
     TF -->|"PASS"| CD
     TF -->|"DROP ❌"| VOID1[" "]:::void
-    CD -->|"novo fingerprint"| INV
-    CD -->|"duplicata ❌"| VOID2[" "]:::void
+    CD -->|"new fingerprint"| INV
+    CD -->|"duplicate ❌"| VOID2[" "]:::void
     INV -.->|"tool calls"| GF
     INV -.->|"tool calls"| K8
     INV --> AN
     AN --> RT
-    RT -->|"severidade ≥ threshold"| PL
+    RT -->|"severity ≥ threshold"| PL
     RT -->|"LOW / NOT_A_PROBLEM"| END1[" "]:::void
     PL --> NO
 
@@ -70,30 +70,30 @@ flowchart TD
     classDef void fill:none,stroke:none
 ```
 
-## Componentes Principais
+## Main Components
 
-| Módulo | Responsabilidade | Arquivo chave |
+| Module | Responsibility | Key file |
 |---|---|---|
-| **Receiver** | Recebe eventos OTLP via gRPC (:4317) e HTTP (:4318) | `receivers/` |
-| **Pipeline** | Decide o que vale o custo do LLM | `pipeline/` |
-| **MCP Client** | Conexão SSE com Grafana MCP e K8s MCP | `mcp_client/manager.py` |
-| **Graph** | Orquestra o workflow LangGraph | `graph/workflow.py` |
-| **Metrics** | 9 métricas Prometheus em `:9090/metrics` | `metrics.py` |
-| **Notifiers** | Formata e envia Slack Block Kit / Discord Embeds | `notifiers/` |
-| **Config** | Toda configuração via env vars | `config.py` |
+| **Receiver** | Receives OTLP events via gRPC (:4317) and HTTP (:4318) | `receivers/` |
+| **Pipeline** | Decides what is worth the LLM cost | `pipeline/` |
+| **MCP Client** | SSE connection to Grafana MCP and K8s MCP | `mcp_client/manager.py` |
+| **Graph** | Orchestrates the LangGraph workflow | `graph/workflow.py` |
+| **Metrics** | 9 Prometheus metrics on `:9090/metrics` | `metrics.py` |
+| **Notifiers** | Formats and sends Slack Block Kit / Discord Embeds | `notifiers/` |
+| **Config** | All configuration via env vars | `config.py` |
 
-## Estrutura de Diretórios
+## Directory Structure
 
 ```
 src/octantis/
-├── main.py                  # Entrypoint — monta e executa o pipeline
-├── config.py                # Pydantic BaseSettings (todas as configs via .env)
-├── metrics.py               # 9 métricas Prometheus + HTTP server
+├── main.py                  # Entrypoint — assembles and runs the pipeline
+├── config.py                # Pydantic BaseSettings (all config via .env)
+├── metrics.py               # 9 Prometheus metrics + HTTP server
 ├── pipeline/
-│   ├── trigger_filter.py    # ← Porta de entrada: regras determinísticas
-│   └── cooldown.py          # ← Deduplicação por fingerprint + cooldown
+│   ├── trigger_filter.py    # ← Entry gate: deterministic rules
+│   └── cooldown.py          # ← Fingerprint deduplication + cooldown
 ├── receivers/
-│   ├── receiver.py          # OTLPReceiver — orquestra gRPC + HTTP + asyncio.Queue
+│   ├── receiver.py          # OTLPReceiver — orchestrates gRPC + HTTP + asyncio.Queue
 │   ├── grpc_server.py       # gRPC servicer (MetricsService, LogsService, TraceService)
 │   ├── http_server.py       # aiohttp server (/v1/metrics, /v1/logs, /v1/traces)
 │   └── parser.py            # OTLP Protobuf/JSON → InfraEvent
@@ -103,22 +103,22 @@ src/octantis/
 │   ├── workflow.py          # StateGraph LangGraph
 │   ├── state.py             # AgentState (TypedDict)
 │   └── nodes/
-│       ├── investigator.py  # Nó: ReAct loop com ferramentas MCP
-│       ├── analyzer.py      # Nó: LLM classifica CRITICAL/MODERATE/LOW/NOT_A_PROBLEM
-│       ├── planner.py       # Nó: LLM gera plano de remediação
-│       └── notifier.py      # Nó: Slack + Discord
+│       ├── investigator.py  # Node: ReAct loop with MCP tools
+│       ├── analyzer.py      # Node: LLM classifies CRITICAL/MODERATE/LOW/NOT_A_PROBLEM
+│       ├── planner.py       # Node: LLM generates remediation plan
+│       └── notifier.py      # Node: Slack + Discord
 ├── notifiers/
-│   ├── slack.py             # Block Kit com cores por severidade
-│   └── discord.py           # Embeds com cores por severidade
+│   ├── slack.py             # Block Kit with severity-based colors
+│   └── discord.py           # Embeds with severity-based colors
 └── models/
     ├── event.py             # InfraEvent, InvestigationResult, MCPQueryRecord
     ├── analysis.py          # SeverityAnalysis, Severity enum
     └── action_plan.py       # ActionPlan, ActionStep
 ```
 
-## Modelos de Dados Centrais
+## Core Data Models
 
-O dado flui por quatro formas ao longo do pipeline:
+Data flows through four shapes along the pipeline:
 
 ```mermaid
 %%{init: {"theme": "dark", "themeVariables": {"primaryColor": "#2d333b", "primaryBorderColor": "#6d5dfc", "primaryTextColor": "#e6edf3", "lineColor": "#8b949e"}}}%%
@@ -163,24 +163,15 @@ classDiagram
     SeverityAnalysis --> ActionPlan : planner node
 ```
 
-## Configuração Rápida
+## Quick Configuration
 
 ```bash
 cp .env.example .env
-# Editar credenciais e URLs
+# Edit credentials and URLs
 
 uv sync
 uv run octantis
 ```
 
-Ou com Docker Compose (stack completo):
-
-```bash
-cd examples/docker-compose
-cp ../../.env.example .env
-# Editar ANTHROPIC_API_KEY
-docker compose up -d
-```
-
-Ver [Pipeline de Filtragem](./pipeline.md) para entender como os eventos são triados antes de chegar ao LLM.
-Ver [O Agente LangGraph](./agent.md) para entender o workflow de investigação, análise e notificação.
+See [Filter Pipeline](./pipeline.md) to understand how events are triaged before reaching the LLM.
+See [The LangGraph Agent](./agent.md) to understand the investigation, analysis, and notification workflow.

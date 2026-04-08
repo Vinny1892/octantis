@@ -1,33 +1,33 @@
 ---
-title: "Pipeline de Filtragem — Como o Octantis decide o que vale o LLM"
-description: "Deep-dive nas duas camadas que separam sinal de ruído antes de qualquer chamada à API"
+title: "Filter Pipeline — How Octantis Decides What Deserves the LLM"
+description: "Deep-dive into the two layers that separate signal from noise before any API call"
 ---
 
-# Pipeline de Filtragem
+# Filter Pipeline
 
-> **Por que esse doc existe:** O custo operacional do Octantis é proporcional ao número de chamadas ao LLM. Um cluster EKS ativo emite centenas de eventos por minuto — a esmagadora maioria são health checks, métricas dentro do normal, e logs informativos sem valor diagnóstico. O pipeline de filtragem é a camada que absorve esse volume e entrega ao LLM **apenas os eventos que têm chance real de ser um problema**.
+> **Why this doc exists:** Octantis's operational cost is proportional to the number of LLM calls. An active infrastructure environment emits hundreds of events per minute — the vast majority are health checks, normal-range metrics, and informational logs with no diagnostic value. The filter pipeline is the layer that absorbs this volume and delivers to the LLM **only the events that have a real chance of being a problem**.
 
-## As Duas Camadas
+## The Two Layers
 
 ```mermaid
 %%{init: {"theme": "dark", "themeVariables": {"primaryColor": "#2d333b", "primaryBorderColor": "#6d5dfc", "primaryTextColor": "#e6edf3", "lineColor": "#8b949e", "secondaryColor": "#161b22"}}}%%
 flowchart TD
-    IN(["InfraEvent\ndo OTLP Receiver"]):::input
+    IN(["InfraEvent\nfrom OTLP Receiver"]):::input
 
-    subgraph L1["Camada 1 — TriggerFilter"]
+    subgraph L1["Layer 1 — TriggerFilter"]
         direction TB
-        NS["NoSignalRule\nevento sem dados"]:::rule
-        HC["HealthCheckRule\nprobes K8s"]:::rule
-        BP["BenignPatternRule\nregex configurável"]:::rule
+        NS["NoSignalRule\nevent with no data"]:::rule
+        HC["HealthCheckRule\nK8s probes"]:::rule
+        BP["BenignPatternRule\nconfigurable regex"]:::rule
         MT["MetricThresholdRule\nCPU/mem/errors/restarts"]:::rule
-        LS["LogSeverityRule\nseveridade + keywords"]:::rule
+        LS["LogSeverityRule\nseverity + keywords"]:::rule
         DF["default\nfail-open"]:::rule
     end
 
-    subgraph L2["Camada 2 — FingerprintCooldown"]
+    subgraph L2["Layer 2 — FingerprintCooldown"]
         FP["_fingerprint()\nSHA-256 namespace+workload\n+metric_names+log_prefix"]:::fn
         CD["cooldown check\n≥ 300s → INVESTIGATE\n< 300s → SUPPRESS"]:::fn
-        LRU["LRU eviction\nmax 1000 entradas"]:::fn
+        LRU["LRU eviction\nmax 1000 entries"]:::fn
     end
 
     LLM(["LangGraph\nWorkflow"]):::output
@@ -35,8 +35,8 @@ flowchart TD
     IN --> L1
     L1 -->|"Decision.DROP ❌"| SINK1[" "]:::void
     L1 -->|"Decision.PASS ✓"| L2
-    L2 -->|"cooldown expirado\nou primeiro evento"| LLM
-    L2 -->|"duplicata ❌"| SINK2[" "]:::void
+    L2 -->|"cooldown expired\nor first event"| LLM
+    L2 -->|"duplicate ❌"| SINK2[" "]:::void
 
     classDef input fill:#1c2128,stroke:#6d5dfc,color:#e6edf3
     classDef rule fill:#2d333b,stroke:#30363d,color:#e6edf3
@@ -45,31 +45,31 @@ flowchart TD
     classDef void fill:none,stroke:none
 ```
 
-As duas camadas são **compostas sequencialmente** em `main.py:95-100` (`src/octantis/main.py:95`):
+The two layers are **composed sequentially** in `main.py:95-100` (`src/octantis/main.py:95`):
 
 ```python
 # src/octantis/main.py:95
 async for event in consumer.events():
-    if not trigger_filter.should_investigate(event):   # Camada 1
+    if not trigger_filter.should_investigate(event):   # Layer 1
         continue
-    if not cooldown.should_investigate(event):          # Camada 2
+    if not cooldown.should_investigate(event):          # Layer 2
         continue
     await workflow.ainvoke({"event": event})             # MCP Investigation
 ```
 
 ---
 
-## Camada 1 — TriggerFilter
+## Layer 1 — TriggerFilter
 
-**Arquivo:** `src/octantis/pipeline/trigger_filter.py`
+**File:** `src/octantis/pipeline/trigger_filter.py`
 
-**Princípio:** avaliação barata e determinística. Nenhuma chamada de rede, nenhuma I/O — só inspeção do `InfraEvent` em memória. O custo de uma decisão errada de DROP é baixo (falso negativo ocasional); o custo de um PASS desnecessário é uma investigação MCP + chamada ao LLM.
+**Principle:** cheap, deterministic evaluation. No network calls, no I/O — just inspecting the `InfraEvent` in memory. The cost of an incorrect DROP is low (occasional false negative); the cost of an unnecessary PASS is an MCP investigation + LLM call.
 
 ### Chain of Responsibility
 
-O `TriggerFilter` implementa o padrão *Chain of Responsibility* (`trigger_filter.py:268-310`): regras são avaliadas em ordem, e o **primeiro match encerra a cadeia**. Se nenhuma regra bater, o evento passa por default (**fail-open** — `trigger_filter.py:302-307`).
+The `TriggerFilter` implements the *Chain of Responsibility* pattern (`trigger_filter.py:268-310`): rules are evaluated in order, and the **first match terminates the chain**. If no rule matches, the event passes by default (**fail-open** — `trigger_filter.py:302-307`).
 
-A ordem padrão é construída por `TriggerFilter.default()` (`trigger_filter.py:268-287`):
+The default order is built by `TriggerFilter.default()` (`trigger_filter.py:268-287`):
 
 ```
 1. NoSignalRule
@@ -79,15 +79,15 @@ A ordem padrão é construída por `TriggerFilter.default()` (`trigger_filter.py
 5. LogSeverityRule
 ```
 
-A ordem importa: `NoSignalRule` primeiro porque é o mais barato (checa se há métricas ou logs). `HealthCheckRule` em seguida porque é o caso mais frequente. `LogSeverityRule` por último porque precisa iterar sobre todos os logs.
+Order matters: `NoSignalRule` first because it's the cheapest (checks if there are metrics or logs). `HealthCheckRule` next because it's the most frequent case. `LogSeverityRule` last because it needs to iterate over all logs.
 
-### Regra 1 — NoSignalRule
+### Rule 1 — NoSignalRule
 
-**Arquivo:** `trigger_filter.py:238-250`
+**File:** `trigger_filter.py:238-250`
 
-Dropa eventos que chegam sem métricas **e** sem logs — sinais sem dados não têm valor diagnóstico. Isso pode acontecer com traces-only ou eventos malformados.
+Drops events that arrive without metrics **and** without logs — signals without data have no diagnostic value. This can happen with traces-only or malformed events.
 
-### Regra 2 — HealthCheckRule
+### Rule 2 — HealthCheckRule
 
 ```python
 # src/octantis/pipeline/trigger_filter.py:52-59
@@ -101,26 +101,26 @@ _PROBE_PATTERNS = [
 ]
 ```
 
-**Por que existe:** O kubelet executa liveness e readiness probes a cada poucos segundos em cada pod. Em um cluster de 50 pods com probe a cada 10s, isso gera ~300 eventos/min que são **100% ruído** — o Kubernetes já sabe se o pod está saudável. A regra verifica o corpo de cada `LogRecord` contra esses padrões e dropa o evento na primeira correspondência (`trigger_filter.py:60-68`).
+**Why it exists:** Health check probes (such as Kubernetes liveness/readiness probes) run every few seconds on each service. In an environment with 50 services probed every 10s, this generates ~300 events/min that are **100% noise** — the orchestrator already knows if the service is healthy. The rule checks the body of each `LogRecord` against these patterns and drops the event on the first match (`trigger_filter.py:60-68`).
 
-**O que a regra NÃO cobre:** probes que retornam erro. Um `GET /healthz` com status 500 no corpo do log passaria pela `HealthCheckRule` sem match, chegaria na `LogSeverityRule`, e seria analisado pelo keyword `error`.
+**What the rule does NOT cover:** probes that return errors. A `GET /healthz` with status 500 in the log body would pass through `HealthCheckRule` without matching, reach `LogSeverityRule`, and be analyzed by the keyword `error`.
 
-### Regra 3 — BenignPatternRule
+### Rule 3 — BenignPatternRule
 
-**Arquivo:** `trigger_filter.py:207-234`
+**File:** `trigger_filter.py:207-234`
 
-**Por que existe:** Cada ambiente tem suas peculiaridades — jobs noturnos de backup, scrapers de Prometheus, exporters específicos. Ao invés de hardcodar esses casos, a regra aceita uma lista de regexes configurável via `PIPELINE_BENIGN_PATTERNS` no `.env`. A checagem ocorre no `source`, `event_type`, e corpo dos logs (`trigger_filter.py:209-211`).
+**Why it exists:** Each environment has its quirks — nightly backup jobs, Prometheus scrapers, specific exporters. Instead of hardcoding these cases, the rule accepts a configurable list of regexes via `PIPELINE_BENIGN_PATTERNS` in `.env`. The check runs against `source`, `event_type`, and log bodies (`trigger_filter.py:209-211`).
 
-**Configuração:**
+**Configuration:**
 ```env
 PIPELINE_BENIGN_PATTERNS=nightly-batch,prometheus-scrape,fluent-bit-healthcheck
 ```
 
-### Regra 4 — MetricThresholdRule
+### Rule 4 — MetricThresholdRule
 
-Esta é a regra mais sofisticada do filtro. Ela opera em dois modos:
+This is the most sophisticated rule in the filter. It operates in two modes:
 
-#### Modo 1 — Nome da métrica indica problema (ALWAYS_ANALYZE)
+#### Mode 1 — Metric name indicates a problem (ALWAYS_ANALYZE)
 
 ```python
 # src/octantis/pipeline/trigger_filter.py:92-102
@@ -130,9 +130,9 @@ _ALWAYS_ANALYZE_NAMES: frozenset[str] = frozenset({
 })
 ```
 
-Se qualquer métrica no evento tem um desses termos no nome, o evento **sempre passa** independente do valor (`trigger_filter.py:104-113`). Isso captura casos como `container_oomkill_total=0` — zero OOM kills *agora* mas o contador zerou, o que significa que algo foi reiniciado.
+If any metric in the event has one of these terms in its name, the event **always passes** regardless of value (`trigger_filter.py:104-113`). This catches cases like `container_oomkill_total=0` — zero OOM kills *now* but the counter was reset, which means something was restarted.
 
-#### Modo 2 — Threshold por categoria
+#### Mode 2 — Threshold by category
 
 ```python
 # src/octantis/pipeline/trigger_filter.py:119
@@ -146,41 +146,41 @@ elif "restart" in name and m.value >= self.restart_count_ok_below:  # ≥3
     breached.append(...)
 ```
 
-O critério de DROP exige que **todos os thresholds estejam dentro do normal ao mesmo tempo**. Se uma única métrica bater, o evento passa (`trigger_filter.py:128-133`).
+The DROP criterion requires that **all thresholds are within normal range simultaneously**. If a single metric breaches, the event passes (`trigger_filter.py:128-133`).
 
-> **Exemplo de DROP:** evento com `cpu_usage=50.0`, `memory_usage=60.0`, sem erros, restarts=0 → todas as métricas saudáveis → `Decision.DROP`.
+> **Example DROP:** event with `cpu_usage=50.0`, `memory_usage=60.0`, no errors, restarts=0 → all metrics healthy → `Decision.DROP`.
 >
-> **Exemplo de PASS:** mesmo evento mas com `cpu_usage=50.0`, `memory_usage=82.0` → memória acima do threshold → `Decision.PASS`.
+> **Example PASS:** same event but with `cpu_usage=50.0`, `memory_usage=82.0` → memory above threshold → `Decision.PASS`.
 
-**Se não há métricas**, a regra retorna `None` e defere para a `LogSeverityRule` (`trigger_filter.py:101`).
+**If there are no metrics**, the rule returns `None` and defers to `LogSeverityRule` (`trigger_filter.py:101`).
 
-### Regra 5 — LogSeverityRule
+### Rule 5 — LogSeverityRule
 
-**Arquivo:** `trigger_filter.py:148-204`
+**File:** `trigger_filter.py:148-204`
 
-A regra opera em dois níveis:
+The rule operates at two levels:
 
-1. **Severidade elevada** (`ERROR`, `FATAL`, `CRITICAL`, `WARN`, `WARNING`): passa imediatamente, sem verificar o conteúdo.
-2. **Severidade baixa** (`INFO`, `DEBUG`, `TRACE`, ou ausente): varre o corpo de todos os logs contra quatro grupos de keywords (`trigger_filter.py:149-155`):
+1. **Elevated severity** (`ERROR`, `FATAL`, `CRITICAL`, `WARN`, `WARNING`): passes immediately, without checking the content.
+2. **Low severity** (`INFO`, `DEBUG`, `TRACE`, or absent): scans the body of all logs against four keyword groups (`trigger_filter.py:149-155`):
 
 ```
-Grupo 1: error, exception, panic, fatal, critical, crash
-Grupo 2: oom, killed, evicted, backoff, throttl
-Grupo 3: timeout, connection refused, refused, unreachable
-Grupo 4: failed, failure, cannot, unable to
+Group 1: error, exception, panic, fatal, critical, crash
+Group 2: oom, killed, evicted, backoff, throttl
+Group 3: timeout, connection refused, refused, unreachable
+Group 4: failed, failure, cannot, unable to
 ```
 
-Se nenhum log contém keywords críticas e todos são INFO/DEBUG, o evento é dropado (`trigger_filter.py:186-190`). Um log `"INFO: Server started on port 8080"` é silenciado. Um log `"INFO: connection refused to postgres"` passa.
+If no log contains critical keywords and all are INFO/DEBUG, the event is dropped (`trigger_filter.py:186-190`). A log `"INFO: Server started on port 8080"` is silenced. A log `"INFO: connection refused to postgres"` passes.
 
 ---
 
-## Camada 2 — FingerprintCooldown
+## Layer 2 — FingerprintCooldown
 
-**Arquivo:** `src/octantis/pipeline/cooldown.py`
+**File:** `src/octantis/pipeline/cooldown.py`
 
-**Problema que resolve:** após o filtro, um problema persistente (ex: pod em CrashLoopBackoff) continuaria gerando eventos indefinidamente — e o LLM investigaria o mesmo problema repetidamente. O cooldown suprime fingerprints já investigados dentro de uma janela configurable.
+**Problem it solves:** after filtering, a persistent problem (e.g., a pod in CrashLoopBackoff or a service repeatedly failing) would continue generating events indefinitely — and the LLM would investigate the same problem repeatedly. The cooldown suppresses fingerprints already investigated within a configurable window.
 
-### Geração de Fingerprint
+### Fingerprint Generation
 
 ```python
 # src/octantis/pipeline/cooldown.py:21-40
@@ -194,19 +194,19 @@ def _fingerprint(event: InfraEvent) -> str:
         ",".join(sorted(m.name for m in event.metrics)),
     ]
     if event.logs:
-        parts.append(event.logs[-1].body[:60])  # prefixo do log mais recente
+        parts.append(event.logs[-1].body[:60])  # prefix of the most recent log
 
     raw = "|".join(parts)
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 ```
 
-O fingerprint é **deliberadamente grosseiro** — não inclui os *valores* das métricas, apenas os *nomes*. Isso garante que `cpu_usage=82%` e `cpu_usage=95%` do mesmo pod gerem o mesmo fingerprint e sejam tratados como o mesmo problema em andamento.
+The fingerprint is **deliberately coarse** — it does not include metric *values*, only *names*. This ensures that `cpu_usage=82%` and `cpu_usage=95%` from the same workload generate the same fingerprint and are treated as the same ongoing problem.
 
-O prefixo `[:60]` do log serve para distinguir tipos diferentes de erro (`"OOMKilled: memory limit"` vs `"CrashLoopBackoff: back-off"`) sem ser sensível a variações de mensagem que mudam por invocação.
+The `[:60]` log prefix distinguishes different types of errors (`"OOMKilled: memory limit"` vs `"CrashLoopBackoff: back-off"`) without being sensitive to message variations that change per invocation.
 
-**Colisão proposital:** dois pods diferentes do mesmo Deployment em namespaces diferentes têm fingerprints diferentes. Dois pods diferentes do mesmo Deployment no mesmo namespace têm fingerprints iguais — porque provavelmente representam a mesma causa raiz.
+**Intentional collision:** two different pods from the same Deployment in different namespaces have different fingerprints. Two different pods from the same Deployment in the same namespace have equal fingerprints — because they likely represent the same root cause.
 
-### Lógica de Cooldown
+### Cooldown Logic
 
 ```python
 # src/octantis/pipeline/cooldown.py:69-106
@@ -215,23 +215,23 @@ def should_investigate(self, event: InfraEvent) -> bool:
     now = time.monotonic()
     entry = self._seen.get(fp)
 
-    if entry is None:              # nunca visto → investiga
+    if entry is None:              # never seen → investigate
         self._record(fp, now)
         return True
 
     elapsed = now - entry.last_seen
-    if elapsed >= self._cooldown:  # cooldown expirou → reinvestiga
+    if elapsed >= self._cooldown:  # cooldown expired → reinvestigate
         self._record(fp, now)
         return True
 
-    entry.count += 1               # dentro do cooldown → suprime
-    entry.last_seen = now          # atualiza timestamp (sliding window)
+    entry.count += 1               # within cooldown → suppress
+    entry.last_seen = now          # update timestamp (sliding window)
     return False
 ```
 
-O `last_seen` é atualizado mesmo quando o evento é suprimido — isso cria uma **sliding window**: enquanto o problema continua chegando, o cooldown é renovado. Quando o problema para, o cooldown expira naturalmente e a próxima ocorrência dispara uma nova investigação.
+The `last_seen` is updated even when the event is suppressed — this creates a **sliding window**: while the problem keeps arriving, the cooldown is renewed. When the problem stops, the cooldown expires naturally and the next occurrence triggers a new investigation.
 
-### Evição LRU
+### LRU Eviction
 
 ```python
 # src/octantis/pipeline/cooldown.py:109-117
@@ -242,41 +242,41 @@ def _record(self, fp: str, now: float) -> None:
     self._seen[fp] = _Entry(last_seen=now)
 ```
 
-Quando o dict de fingerprints atinge `max_entries` (default: 1000), o entry com o `last_seen` mais antigo é removido. Isso significa que problemas que pararam de ocorrer são naturalmente esquecidos e reintegrados ao ciclo de investigação quando voltam.
+When the fingerprint dict reaches `max_entries` (default: 1000), the entry with the oldest `last_seen` is removed. This means problems that stopped occurring are naturally forgotten and reintegrated into the investigation cycle when they return.
 
 ---
 
-## Configuração
+## Configuration
 
-Todas as configurações do pipeline são controladas via variáveis de ambiente com prefixo `PIPELINE_`, mapeadas para `PipelineSettings` em `config.py:93-111` (`src/octantis/config.py:93`).
+All pipeline settings are controlled via environment variables with the `PIPELINE_` prefix, mapped to `PipelineSettings` in `config.py:93-111` (`src/octantis/config.py:93`).
 
 ```env
-# Thresholds do TriggerFilter
-PIPELINE_CPU_THRESHOLD=75.0          # % — eventos com CPU ≥ isso passam
-PIPELINE_MEMORY_THRESHOLD=80.0       # % — eventos com memória ≥ isso passam
+# TriggerFilter thresholds
+PIPELINE_CPU_THRESHOLD=75.0          # % — events with CPU ≥ this pass
+PIPELINE_MEMORY_THRESHOLD=80.0       # % — events with memory ≥ this pass
 PIPELINE_ERROR_RATE_THRESHOLD=0.01   # req/s
 
-# Regexes de fontes/logs conhecidos como benignos (sempre dropados)
+# Regexes for known benign sources/logs (always dropped)
 PIPELINE_BENIGN_PATTERNS=nightly-batch,prometheus-scrape
 
 # Cooldown
-PIPELINE_COOLDOWN_SECONDS=300        # 5 minutos de supressão por fingerprint
-PIPELINE_COOLDOWN_MAX_ENTRIES=1000   # máximo de fingerprints em memória
+PIPELINE_COOLDOWN_SECONDS=300        # 5 minutes of suppression per fingerprint
+PIPELINE_COOLDOWN_MAX_ENTRIES=1000   # max fingerprints in memory
 ```
 
-### Trade-offs de Configuração
+### Configuration Trade-offs
 
-| Parâmetro | Valor baixo | Valor alto |
+| Parameter | Low value | High value |
 |---|---|---|
-| `CPU_THRESHOLD` | Mais investigações MCP, menos falsos negativos | Menos chamadas, risk de perder picos curtos |
-| `COOLDOWN_SECONDS` | Reinvestigação frequente, mais custo | Menos custo, risk de não detectar agravamento |
-| `COOLDOWN_MAX_ENTRIES` | Fingerprints expiram mais rápido (LRU), mais reinvestigações | Mais memória, fingerprints retidos por mais tempo |
+| `CPU_THRESHOLD` | More MCP investigations, fewer false negatives | Fewer calls, risk of missing short spikes |
+| `COOLDOWN_SECONDS` | Frequent reinvestigation, higher cost | Lower cost, risk of not detecting worsening |
+| `COOLDOWN_MAX_ENTRIES` | Fingerprints expire faster (LRU), more reinvestigations | More memory, fingerprints retained longer |
 
 ---
 
-## Como Adicionar uma Nova Regra
+## How to Add a New Rule
 
-O sistema é extensível via o protocolo `Rule` (`trigger_filter.py:33-38`):
+The system is extensible via the `Rule` protocol (`trigger_filter.py:33-38`):
 
 ```python
 # src/octantis/pipeline/trigger_filter.py:33
@@ -285,9 +285,9 @@ class Rule(Protocol):
     def evaluate(self, event: InfraEvent) -> FilterResult | None: ...
 ```
 
-Para adicionar uma regra customizada:
+To add a custom rule:
 
-**1. Implemente a regra:**
+**1. Implement the rule:**
 
 ```python
 @dataclass
@@ -307,46 +307,46 @@ class NamespaceBlocklistRule:
         return None
 ```
 
-**2. Injete-a na chain:**
+**2. Inject it into the chain:**
 
 ```python
-# Em main.py, ao construir o TriggerFilter:
+# In main.py, when building the TriggerFilter:
 trigger_filter = TriggerFilter(rules=[
     NoSignalRule(),
     HealthCheckRule(),
-    NamespaceBlocklistRule(),  # nova regra
+    NamespaceBlocklistRule(),  # new rule
     BenignPatternRule(patterns=cfg.benign_patterns_list),
     MetricThresholdRule(...),
     LogSeverityRule(),
 ])
 ```
 
-A regra só precisa implementar `evaluate()` retornando `FilterResult | None`. Retornar `None` significa "não tenho opinião, deixa a próxima decidir".
+The rule only needs to implement `evaluate()` returning `FilterResult | None`. Returning `None` means "I have no opinion, let the next one decide".
 
 ---
 
-## Observabilidade do Pipeline
+## Pipeline Observability
 
-O pipeline instrumenta o counter `TRIGGER_TOTAL` com label `outcome` (`src/octantis/metrics.py:31-35`):
+The pipeline instruments the `TRIGGER_TOTAL` counter with an `outcome` label (`src/octantis/metrics.py:31-35`):
 
-| Label `outcome` | Significado |
+| Label `outcome` | Meaning |
 |---|---|
-| `passed` | Evento passou pelo TriggerFilter + Cooldown e foi investigado |
-| `dropped` | Evento dropado pelo TriggerFilter |
-| `cooldown` | Evento suprimido pelo FingerprintCooldown |
+| `passed` | Event passed through TriggerFilter + Cooldown and was investigated |
+| `dropped` | Event dropped by TriggerFilter |
+| `cooldown` | Event suppressed by FingerprintCooldown |
 
-Cada camada também emite logs estruturados:
+Each layer also emits structured logs:
 
-| Evento de log | Camada | O que indica |
+| Log event | Layer | What it indicates |
 |---|---|---|
-| `trigger.rule_matched` (level=DEBUG) | TriggerFilter | Cada decisão com regra + motivo |
-| `cooldown.first_seen` (level=DEBUG) | Cooldown | Primeiro evento de um fingerprint |
-| `cooldown.suppressed` (level=INFO) | Cooldown | Evento suprimido com `suppressed_count` |
-| `cooldown.expired` (level=DEBUG) | Cooldown | Reanálise após cooldown expirado |
+| `trigger.rule_matched` (level=DEBUG) | TriggerFilter | Each decision with rule + reason |
+| `cooldown.first_seen` (level=DEBUG) | Cooldown | First event for a fingerprint |
+| `cooldown.suppressed` (level=INFO) | Cooldown | Event suppressed with `suppressed_count` |
+| `cooldown.expired` (level=DEBUG) | Cooldown | Reanalysis after cooldown expired |
 
-Uma query PromQL útil para monitorar a eficiência do pipeline:
+A useful PromQL query to monitor pipeline efficiency:
 
 ```promql
-# Taxa de drop vs pass nos últimos 5 minutos
+# Drop vs pass rate in the last 5 minutes
 sum by (outcome) (rate(octantis_trigger_total[5m]))
 ```

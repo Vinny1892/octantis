@@ -1,17 +1,17 @@
 ---
 title: "Onboarding — Zero to Running"
-description: "Como subir o Octantis e contribuir com o código"
+description: "How to set up Octantis and contribute to the codebase"
 ---
 
 # Onboarding — Zero to Running
 
-## Pré-requisitos
+## Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/)
 - [Kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installation)
 - [kubectl](https://kubernetes.io/docs/tasks/tools/)
 - [Helm](https://helm.sh/docs/intro/install/)
-- Para desenvolvimento local: Python 3.12+ e [`uv`](https://docs.astral.sh/uv/)
+- For local development: Python 3.12+ and [`uv`](https://docs.astral.sh/uv/)
 
 ## Container Image
 
@@ -19,14 +19,14 @@ description: "Como subir o Octantis e contribuir com o código"
 ghcr.io/vinny1892/octantis:latest
 ```
 
-Publicada automaticamente pelo CI a cada push no `master`. Para produção, pine por commit SHA (e.g., `ghcr.io/vinny1892/octantis:dba131d`).
+Published automatically by CI on every push to `master`. For production, pin to a specific commit SHA (e.g., `ghcr.io/vinny1892/octantis:dba131d`).
 
-## Setup — Kind Dev Cluster (recomendado)
+## Setup — Kind Dev Cluster (recommended)
 
-O Octantis roda dentro de um cluster Kubernetes. O jeito mais rápido de testar é com o ambiente de dev incluso, que sobe um cluster Kind com stack de observabilidade completa:
+Octantis receives metrics and logs via OTLP. The fastest way to try it is with the included Kind dev environment, which spins up a cluster with a full observability stack:
 
 - Prometheus + Grafana + Alertmanager (kube-prometheus-stack)
-- Mimir (TSDB de longo prazo)
+- Mimir (long-term TSDB)
 - OpenTelemetry Collector
 - MetalLB (LoadBalancer)
 - Grafana MCP (`ghcr.io/vinny1892/mcp-grafana:latest`)
@@ -34,39 +34,39 @@ O Octantis roda dentro de um cluster Kubernetes. O jeito mais rápido de testar 
 - Octantis (`ghcr.io/vinny1892/octantis:latest`)
 
 ```bash
-# 1. Configurar secrets (escolha uma opção)
+# 1. Configure secrets (choose one option)
 
-# Opção A: variáveis de ambiente
+# Option A: environment variables
 export OPENROUTER_API_KEY="sk-or-..."
 export SLACK_WEBHOOK_URL="https://hooks.slack.com/services/..."
 export DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/..."
 
-# Opção B: 1Password CLI (uma vez por máquina)
+# Option B: 1Password CLI (once per machine)
 bash dev/op-setup.sh
 
-# 2. Subir o cluster (~5 min)
+# 2. Create the cluster (~5 min)
 bash dev/setup.sh
 
-# Para recriar do zero
+# To recreate from scratch
 bash dev/setup.sh --force
 ```
 
-| Serviço | URL | Credenciais |
+| Service | URL | Credentials |
 |---|---|---|
 | Grafana | http://grafana.octantis.cluster.local | admin / admin |
 | Mimir API | http://mimir.octantis.cluster.local | — |
 | nginx-demo | http://demo.octantis.cluster.local | — |
 
-O `setup.sh` configura o DNS local automaticamente (MetalLB IP → `/etc/hosts`).
+The `setup.sh` script configures local DNS automatically (MetalLB IP → `/etc/hosts`).
 
-Ver [`dev/README.md`](../dev/README.md) para detalhes completos (arquitetura, troubleshooting, secrets).
+See [`dev/README.md`](../dev/README.md) for full details (architecture, troubleshooting, secrets).
 
-## Deploy em Cluster Existente
+## Deploy to an Existing Kubernetes Cluster
 
-Para deploy em um cluster Kubernetes que já existe (EKS, GKE, AKS, etc.), use os manifests de exemplo:
+To deploy on an existing Kubernetes cluster (EKS, GKE, AKS, etc.), use the example manifests:
 
 ```bash
-# 1. Criar namespace e secrets
+# 1. Create namespace and secrets
 kubectl create namespace monitoring
 kubectl create secret generic octantis-secrets \
   --namespace monitoring \
@@ -77,51 +77,51 @@ kubectl create secret generic octantis-secrets \
 kubectl apply -f examples/kubernetes/
 ```
 
-Os manifests em [`examples/kubernetes/`](../examples/kubernetes/) incluem:
+The manifests in [`examples/kubernetes/`](../examples/kubernetes/) include:
 
-| Manifesto | Descrição | Imagem |
+| Manifest | Description | Image |
 |---|---|---|
 | `octantis.yaml` | Deployment + Service + ConfigMap | `ghcr.io/vinny1892/octantis:latest` |
 | `mcp-grafana.yaml` | Grafana MCP Server | `ghcr.io/vinny1892/mcp-grafana:latest` |
 | `mcp-k8s.yaml` | Kubernetes MCP Server (read-only) | `ghcr.io/containers/kubernetes-mcp-server:latest` |
 
-Customize o ConfigMap em `octantis.yaml` para ajustar provider, modelo, notificações, etc.
+Customize the ConfigMap in `octantis.yaml` to adjust provider, model, notifications, etc.
 
-### Exemplo com Bedrock
+### Bedrock Example
 
 ```yaml
-# No ConfigMap do octantis.yaml
+# In octantis.yaml ConfigMap
 LLM_PROVIDER: "bedrock"
 LLM_MODEL: "global.anthropic.claude-opus-4-6-v1"
-# AWS_REGION_NAME via env var ou IAM role (IRSA no EKS)
+# AWS_REGION_NAME via env var or IAM role (IRSA on EKS)
 ```
 
-## Desenvolvimento Local
+## Local Development
 
-Para rodar o Octantis fora do cluster (desenvolvimento de código):
+To run Octantis outside the cluster (code development):
 
 ```bash
-# 1. Instale as dependências
+# 1. Install dependencies
 uv sync
 
-# 2. Configure o ambiente
+# 2. Configure environment
 cp .env.example .env
-# Edite .env com suas chaves
+# Edit .env with your keys
 ```
 
-Configuração mínima:
+Minimal configuration:
 
 ```env
 LLM_PROVIDER=anthropic
 ANTHROPIC_API_KEY=sk-ant-...
 
-# Grafana MCP (precisa de um mcp-grafana rodando — pode ser no Kind cluster)
+# Grafana MCP (requires a running mcp-grafana — can be in the Kind cluster)
 GRAFANA_MCP_URL=http://localhost:8080/sse
 GRAFANA_MCP_API_KEY=glsa_...
 
 LOG_LEVEL=DEBUG
 
-# Desabilitar notificações durante dev
+# Disable notifications during dev
 SLACK_WEBHOOK_URL=
 DISCORD_WEBHOOK_URL=
 ```
@@ -130,7 +130,7 @@ DISCORD_WEBHOOK_URL=
 uv run octantis
 ```
 
-Saída esperada:
+Expected output:
 
 ```
 {"version":"0.2.0","event":"octantis.starting"}
@@ -138,14 +138,14 @@ Saída esperada:
 {"grpc_port":4317,"http_port":4318,"event":"octantis.ready"}
 ```
 
-**Nota:** O Octantis depende de MCP servers para investigação. Sem Grafana MCP, ele opera em modo degradado (analisa só com dados do trigger). Sem Kubernetes MCP, perde contexto de pods/events mas funciona normalmente.
+**Note:** Octantis depends on MCP servers for investigation. Without Grafana MCP, it operates in degraded mode (analyzes only with trigger data). Without Kubernetes MCP, it loses pod/events context but works normally.
 
-## Enviando um Evento de Teste
+## Sending a Test Event
 
-Use `curl` para enviar um evento OTLP/HTTP diretamente ao Octantis:
+Use `curl` to send an OTLP/HTTP event directly to Octantis:
 
 ```bash
-# Evento com CPU alta — deve disparar investigação MCP
+# High-CPU event — should trigger MCP investigation
 curl -X POST http://localhost:4318/v1/metrics \
   -H "Content-Type: application/json" \
   -d '{
@@ -171,20 +171,20 @@ curl -X POST http://localhost:4318/v1/metrics \
   }'
 ```
 
-No Kind cluster, os eventos reais já fluem automaticamente — o OTel Collector scrapa kube-state-metrics a cada 30s e encaminha para o Octantis.
+In the Kind cluster, real events already flow automatically — the OTel Collector scrapes kube-state-metrics every 30s and forwards to Octantis.
 
-## Rodando os Testes
+## Running Tests
 
 ```bash
-uv run pytest                          # todos os testes (98)
-uv run pytest tests/test_trigger_filter.py -v  # só trigger filter
-uv run pytest tests/test_investigator.py -v    # só investigator
-uv run pytest -k "cooldown" -v         # por nome
+uv run pytest                          # all tests (98)
+uv run pytest tests/test_trigger_filter.py -v  # trigger filter only
+uv run pytest tests/test_investigator.py -v    # investigator only
+uv run pytest -k "cooldown" -v         # by name
 ```
 
-Todos os testes usam mocks — nenhuma chamada real ao LLM, MCP, ou APIs externas.
+All tests use mocks — no real calls to the LLM, MCP, or external APIs.
 
-### Lint e Formatação
+### Lint and Formatting
 
 ```bash
 uv run ruff check src/ tests/         # lint
@@ -193,76 +193,76 @@ uv run ruff format src/ tests/        # auto-format
 
 ---
 
-## Mapa de Leitura do Código
+## Code Reading Map
 
-Dependendo do que você quer entender ou modificar:
+Depending on what you want to understand or modify:
 
-### "Quero ajustar o que passa para o LLM"
--> `src/octantis/pipeline/trigger_filter.py` — adicione/modifique regras
--> `src/octantis/pipeline/cooldown.py:21` — ajuste o fingerprint
--> `.env` — `PIPELINE_*` para tunar sem alterar código
+### "I want to adjust what reaches the LLM"
+-> `src/octantis/pipeline/trigger_filter.py` — add/modify rules
+-> `src/octantis/pipeline/cooldown.py:21` — adjust the fingerprint
+-> `.env` — `PIPELINE_*` to tune without changing code
 
-### "Quero mudar como o LLM investiga os eventos"
+### "I want to change how the LLM investigates events"
 -> `src/octantis/graph/nodes/investigator.py:28` — `INVESTIGATION_SYSTEM_PROMPT`
--> `src/octantis/mcp_client/manager.py` — conexão MCP e descoberta de ferramentas
--> `.env` — `INVESTIGATION_*` para ajustar budget e timeouts
+-> `src/octantis/mcp_client/manager.py` — MCP connection and tool discovery
+-> `.env` — `INVESTIGATION_*` to adjust budget and timeouts
 
-### "Quero mudar como o LLM classifica os eventos"
+### "I want to change how the LLM classifies events"
 -> `src/octantis/graph/nodes/analyzer.py:14` — `SYSTEM_PROMPT`
--> `src/octantis/models/analysis.py` — adicione campos ao `SeverityAnalysis`
+-> `src/octantis/models/analysis.py` — add fields to `SeverityAnalysis`
 
-### "Quero mudar o plano de ação gerado"
+### "I want to change the generated action plan"
 -> `src/octantis/graph/nodes/planner.py:14` — `SYSTEM_PROMPT`
--> `src/octantis/models/action_plan.py` — adicione `StepType` ou campos
+-> `src/octantis/models/action_plan.py` — add `StepType` or fields
 
-### "Quero adicionar um canal de notificação"
--> Crie `src/octantis/notifiers/pagerduty.py` implementando `.send(investigation, analysis, action_plan)`
--> Instancie e chame em `src/octantis/graph/nodes/notifier.py`
--> Adicione settings em `src/octantis/config.py`
+### "I want to add a notification channel"
+-> Create `src/octantis/notifiers/pagerduty.py` implementing `.send(investigation, analysis, action_plan)`
+-> Instantiate and call in `src/octantis/graph/nodes/notifier.py`
+-> Add settings in `src/octantis/config.py`
 
-### "Quero adicionar métricas internas"
--> `src/octantis/metrics.py` — defina novos Counters/Histograms
--> Instrumente nos nós relevantes
+### "I want to add internal metrics"
+-> `src/octantis/metrics.py` — define new Counters/Histograms
+-> Instrument in the relevant nodes
 
-### "Quero entender o formato OTLP"
+### "I want to understand the OTLP format"
 -> `src/octantis/receivers/parser.py` — OTLP Protobuf/JSON -> InfraEvent
--> Os campos `resourceMetrics` e `resourceLogs` seguem o schema OTLP/JSON
+-> The `resourceMetrics` and `resourceLogs` fields follow the OTLP/JSON schema
 
 ---
 
-## Variáveis de Ambiente — Referência Completa
+## Environment Variables — Full Reference
 
-| Variável | Default | Descrição |
+| Variable | Default | Description |
 |---|---|---|
 | `LOG_LEVEL` | `INFO` | `DEBUG / INFO / WARNING / ERROR` |
-| `MIN_SEVERITY_TO_NOTIFY` | `MODERATE` | Severidade mínima para acionar Slack/Discord |
-| `LANGUAGE` | `en` | Idioma dos outputs do LLM (`en`, `pt-br`) |
-| `LLM_PROVIDER` | `anthropic` | `anthropic`, `openrouter` ou `bedrock` |
-| `LLM_MODEL` | `claude-sonnet-4-6` | Model ID para analyzer e planner |
-| `LLM_INVESTIGATION_MODEL` | (= LLM_MODEL) | Model ID para investigator (opcional) |
-| `ANTHROPIC_API_KEY` | — | Chave Anthropic (obrigatória se provider=anthropic) |
-| `OPENROUTER_API_KEY` | — | Chave OpenRouter (obrigatória se provider=openrouter) |
-| `AWS_REGION_NAME` | — | Região AWS (obrigatória se provider=bedrock). Credenciais via chain padrão AWS |
-| `GRAFANA_MCP_URL` | — | URL SSE do Grafana MCP (obrigatório) |
-| `GRAFANA_MCP_API_KEY` | — | API key do Grafana service account |
-| `K8S_MCP_URL` | — | URL SSE do K8s MCP (recomendado). Imagem: `ghcr.io/containers/kubernetes-mcp-server:latest` |
-| `INVESTIGATION_MAX_QUERIES` | `10` | Máximo de queries MCP por investigação |
-| `INVESTIGATION_TIMEOUT_SECONDS` | `60` | Timeout total da investigação |
-| `INVESTIGATION_QUERY_TIMEOUT_SECONDS` | `10` | Timeout por query MCP |
-| `OTLP_GRPC_PORT` | `4317` | Porta do receiver gRPC |
-| `OTLP_HTTP_PORT` | `4318` | Porta do receiver HTTP |
-| `OTLP_GRPC_ENABLED` | `true` | Habilitar receiver gRPC |
-| `OTLP_HTTP_ENABLED` | `true` | Habilitar receiver HTTP |
-| `OTLP_QUEUE_MAX_SIZE` | `1000` | Tamanho máximo da fila de eventos |
-| `METRICS_PORT` | `9090` | Porta das métricas Prometheus |
-| `METRICS_ENABLED` | `true` | Habilitar endpoint de métricas |
-| `SLACK_WEBHOOK_URL` | — | Incoming webhook URL (vazio = desabilitado) |
-| `SLACK_BOT_TOKEN` | — | Bot token (alternativa ao webhook) |
-| `SLACK_CHANNEL` | `#infra-alerts` | Channel (só usado com bot token) |
-| `DISCORD_WEBHOOK_URL` | — | Webhook URL (vazio = desabilitado) |
-| `PIPELINE_CPU_THRESHOLD` | `75.0` | % CPU para considerar anômalo |
-| `PIPELINE_MEMORY_THRESHOLD` | `80.0` | % memória para considerar anômalo |
-| `PIPELINE_ERROR_RATE_THRESHOLD` | `0.01` | req/s de erros para considerar anômalo |
-| `PIPELINE_BENIGN_PATTERNS` | `""` | Regexes separados por vírgula para sempre dropar |
-| `PIPELINE_COOLDOWN_SECONDS` | `300` | Segundos de supressão por fingerprint |
-| `PIPELINE_COOLDOWN_MAX_ENTRIES` | `1000` | Máximo de fingerprints em memória |
+| `MIN_SEVERITY_TO_NOTIFY` | `MODERATE` | Minimum severity to trigger Slack/Discord |
+| `LANGUAGE` | `en` | LLM output language (`en`, `pt-br`) |
+| `LLM_PROVIDER` | `anthropic` | `anthropic`, `openrouter`, or `bedrock` |
+| `LLM_MODEL` | `claude-sonnet-4-6` | Model ID for analyzer and planner |
+| `LLM_INVESTIGATION_MODEL` | (= LLM_MODEL) | Model ID for investigator (optional) |
+| `ANTHROPIC_API_KEY` | — | Anthropic key (required if provider=anthropic) |
+| `OPENROUTER_API_KEY` | — | OpenRouter key (required if provider=openrouter) |
+| `AWS_REGION_NAME` | — | AWS region (required if provider=bedrock). Credentials via standard AWS chain |
+| `GRAFANA_MCP_URL` | — | Grafana MCP SSE URL (required) |
+| `GRAFANA_MCP_API_KEY` | — | Grafana service account API key |
+| `K8S_MCP_URL` | — | K8s MCP SSE URL (recommended). Image: `ghcr.io/containers/kubernetes-mcp-server:latest` |
+| `INVESTIGATION_MAX_QUERIES` | `10` | Max MCP queries per investigation |
+| `INVESTIGATION_TIMEOUT_SECONDS` | `60` | Total investigation timeout |
+| `INVESTIGATION_QUERY_TIMEOUT_SECONDS` | `10` | Per-query MCP timeout |
+| `OTLP_GRPC_PORT` | `4317` | gRPC receiver port |
+| `OTLP_HTTP_PORT` | `4318` | HTTP receiver port |
+| `OTLP_GRPC_ENABLED` | `true` | Enable gRPC receiver |
+| `OTLP_HTTP_ENABLED` | `true` | Enable HTTP receiver |
+| `OTLP_QUEUE_MAX_SIZE` | `1000` | Max event queue size |
+| `METRICS_PORT` | `9090` | Prometheus metrics port |
+| `METRICS_ENABLED` | `true` | Enable metrics endpoint |
+| `SLACK_WEBHOOK_URL` | — | Incoming webhook URL (empty = disabled) |
+| `SLACK_BOT_TOKEN` | — | Bot token (alternative to webhook) |
+| `SLACK_CHANNEL` | `#infra-alerts` | Channel (only used with bot token) |
+| `DISCORD_WEBHOOK_URL` | — | Webhook URL (empty = disabled) |
+| `PIPELINE_CPU_THRESHOLD` | `75.0` | CPU % to consider anomalous |
+| `PIPELINE_MEMORY_THRESHOLD` | `80.0` | Memory % to consider anomalous |
+| `PIPELINE_ERROR_RATE_THRESHOLD` | `0.01` | Error req/s to consider anomalous |
+| `PIPELINE_BENIGN_PATTERNS` | `""` | Comma-separated regexes to always drop |
+| `PIPELINE_COOLDOWN_SECONDS` | `300` | Suppression seconds per fingerprint |
+| `PIPELINE_COOLDOWN_MAX_ENTRIES` | `1000` | Max fingerprints in memory |
