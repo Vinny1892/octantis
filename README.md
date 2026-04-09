@@ -95,7 +95,7 @@ cp .env.example .env   # edit with your keys
 uv run octantis
 ```
 
-See [Onboarding — Local Development](.github/onboarding.md#local-development) for full setup details.
+See [Onboarding — Local Development](.github/ONBOARDING.md#local-development) for full setup details.
 
 ## Configuration
 
@@ -138,7 +138,7 @@ See [CONTRIBUTING.md](.github/CONTRIBUTING.md).
 
 ## Documentation
 
-- [Architecture Overview](.github/overview.md) — data flow and design decisions
-- [Filter Pipeline](.github/pipeline.md) — event ingestion and pre-filtering
-- [LangGraph Agent](.github/agent.md) — investigation, analysis, planning, and notification
-- [Onboarding](.github/onboarding.md) — setup guide and code map
+- [Architecture Overview](.github/OVERVIEW.md) — data flow and design decisions
+- [Filter Pipeline](.github/PIPELINE.md) — event ingestion and pre-filtering
+- [LangGraph Agent](.github/AGENT.md) — investigation, analysis, planning, and notification
+- [Onboarding](.github/ONBOARDING.md) — setup guide and code map

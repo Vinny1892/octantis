@@ -598,7 +598,7 @@ No dashboards in v1. `uv run octantis` in a TTY uses `structlog`'s `ConsoleRende
 |-------|------|-----------|----------|
 | 1 — Implement receiver | Add `src/octantis/receivers/` module (`grpc_server.py`, `http_server.py`, `parser.py`, `__init__.py`) | Unit tests for parser; `curl` to HTTP receiver; `grpcurl` to gRPC receiver | Delete `receivers/` directory |
 | 2 — Integrate & remove Redpanda | Update `main.py`, `config.py`; remove `consumers/redpanda.py`; remove `aiokafka` from `pyproject.toml` | `uv run octantis` starts cleanly; full pipeline test with OTel Collector | `git revert` the integration commit |
-| 3 — Documentation | Update `AGENTS.md`, `.github/overview.md`, `.github/pipeline.md`, `README.md`, `.env.example` | Docs reflect new architecture; quickstart works without Redpanda | N/A |
+| 3 — Documentation | Update `AGENTS.md`, `.github/OVERVIEW.md`, `.github/PIPELINE.md`, `README.md`, `.env.example` | Docs reflect new architecture; quickstart works without Redpanda | N/A |
 
 ### Migration Plan
 

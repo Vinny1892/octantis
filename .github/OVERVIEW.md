@@ -182,5 +182,5 @@ uv sync
 uv run octantis
 ```
 
-See [Filter Pipeline](./pipeline.md) to understand how events are triaged before reaching the LLM.
-See [The LangGraph Agent](./agent.md) to understand the investigation, analysis, and notification workflow.
+See [Filter Pipeline](./PIPELINE.md) to understand how events are triaged before reaching the LLM.
+See [The LangGraph Agent](./AGENT.md) to understand the investigation, analysis, and notification workflow.
