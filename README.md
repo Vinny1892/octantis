@@ -6,12 +6,13 @@ Intelligent infrastructure monitoring agent. Receives metrics and logs via OTLP,
 
 - [How it works](#how-it-works)
 - [Container Image](#container-image)
-- [Quickstart — Kind Dev Cluster](#quickstart--kind-dev-cluster)
-- [Deploy to a Kubernetes Cluster](#deploy-to-a-kubernetes-cluster)
+- [Running Octantis](#running-octantis)
+  - [Local Kind Cluster (quickstart)](#local-kind-cluster-quickstart)
+  - [Existing Kubernetes Cluster](#existing-kubernetes-cluster)
 - [Configuration](#configuration)
 - [MCP Servers](#mcp-servers)
 - [Severity Levels](#severity-levels)
-- [Development](#development)
+- [Contributing](#contributing)
 - [Documentation](#documentation)
 
 ## How it works
@@ -39,9 +40,11 @@ ghcr.io/vinny1892/octantis:latest
 
 Published automatically by CI on every push to `master`. Pin to a specific commit SHA for production (e.g., `ghcr.io/vinny1892/octantis:dba131d`).
 
-## Quickstart — Kind Dev Cluster
+## Running Octantis
 
-The fastest way to try Octantis is with the included Kind dev environment, which sets up a full observability stack:
+### Local Kind Cluster (quickstart)
+
+The fastest way to try Octantis. The `dev/` directory contains scripts that create a Kind cluster with a full observability stack (Prometheus, Grafana, Mimir, OTel Collector, MetalLB, MCP servers, and Octantis itself) — everything needed to run end-to-end locally.
 
 ```bash
 # Prerequisites: Docker, Kind, kubectl, Helm
@@ -51,15 +54,15 @@ export OPENROUTER_API_KEY="sk-or-..."
 export SLACK_WEBHOOK_URL="https://hooks.slack.com/services/..."
 export DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/..."
 
-# 2. Create the cluster (Kind + Prometheus + Grafana + Mimir + OTel + MetalLB + MCPs + Octantis)
+# 2. Create the cluster
 bash dev/setup.sh
 ```
 
 See [`dev/README.md`](dev/README.md) for full details (architecture, secrets, troubleshooting).
 
-## Deploy to a Kubernetes Cluster
+### Existing Kubernetes Cluster
 
-Example manifests for deploying Octantis + MCP servers to an existing cluster:
+For deploying Octantis to a real cluster (EKS, GKE, AKS, etc.), use the example manifests:
 
 ```bash
 # 1. Create secrets
@@ -111,7 +114,9 @@ Octantis connects to MCP servers via SSE for real-time cluster observability:
 | `LOW` | Minor anomaly | Log only |
 | `NOT_A_PROBLEM` | Expected / false positive | Log only |
 
-## Development
+## Contributing
+
+To work on the Octantis codebase itself (requires Python 3.12+ and [`uv`](https://docs.astral.sh/uv/)):
 
 ```bash
 # Install dependencies
@@ -123,6 +128,8 @@ uv run pytest
 # Lint
 uv run ruff check src/ tests/
 ```
+
+To run Octantis locally against the Kind cluster during development, see [Onboarding — Local Development](docs/onboarding.md#local-development).
 
 ## Documentation
 
