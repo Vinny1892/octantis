@@ -9,6 +9,7 @@ Intelligent infrastructure monitoring agent. Receives metrics and logs via OTLP,
 - [Running Octantis](#running-octantis)
   - [Local Kind Cluster (quickstart)](#local-kind-cluster-quickstart)
   - [Existing Kubernetes Cluster](#existing-kubernetes-cluster)
+  - [From Source](#from-source)
 - [Configuration](#configuration)
 - [MCP Servers](#mcp-servers)
 - [Severity Levels](#severity-levels)
@@ -79,6 +80,18 @@ See [`examples/kubernetes/`](examples/kubernetes/) for the manifests. Customize 
 
 Image: `ghcr.io/vinny1892/octantis:latest`
 
+### From Source
+
+To run Octantis outside a cluster (requires Python 3.12+ and [`uv`](https://docs.astral.sh/uv/)):
+
+```bash
+uv sync
+cp .env.example .env   # edit with your keys
+uv run octantis
+```
+
+See [Onboarding — Local Development](docs/onboarding.md#local-development) for full setup details.
+
 ## Configuration
 
 All settings via environment variables. See [`.env.example`](.env.example) for the full list.
@@ -116,20 +129,17 @@ Octantis connects to MCP servers via SSE for real-time cluster observability:
 
 ## Contributing
 
-To work on the Octantis codebase itself (requires Python 3.12+ and [`uv`](https://docs.astral.sh/uv/)):
+1. Fork the repo and create a feature branch from `master`
+2. Install dependencies: `uv sync`
+3. Make your changes
+4. Run tests and lint:
+   ```bash
+   uv run pytest
+   uv run ruff check src/ tests/
+   ```
+5. Open a pull request against `master`
 
-```bash
-# Install dependencies
-uv sync
-
-# Run tests (98 tests, all mocked — no real LLM/MCP calls)
-uv run pytest
-
-# Lint
-uv run ruff check src/ tests/
-```
-
-To run Octantis locally against the Kind cluster during development, see [Onboarding — Local Development](docs/onboarding.md#local-development).
+All tests are mocked — no real LLM, MCP, or external API calls needed to run them.
 
 ## Documentation
 
