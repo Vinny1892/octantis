@@ -104,7 +104,7 @@ Remove Redpanda/Kafka from the ingestion stack and have Octantis expose a native
 |-----------|----------|----------|-------------|-----------|----------|
 | M1: OTLP Receiver | Implement OTLP endpoint (gRPC + HTTP) and parser | F01, F02, F03 | 1. `receivers/` module with OTLP server 2. OTLP → InfraEvent parser 3. Parser unit tests | `uv run pytest` passes; curl with OTLP payload returns 200 | Vinicius Espindola |
 | M2: Integration & Cleanup | Integrate receiver into main loop, remove Redpanda | F04 | 1. `main.py` using OTLP receiver 2. `config.py` with OTLP settings 3. `RedpandaConsumer` and `RedpandaSettings` removed 4. `aiokafka` removed from pyproject.toml 5. .env.example updated 6. Dockerfile updated | `uv run octantis` starts without Redpanda and receives OTLP events | Vinicius Espindola |
-| M3: Documentation | Update docs to reflect new architecture | — | 1. docs/overview.md updated 2. docs/pipeline.md updated 3. docs/onboarding.md updated 4. README.md updated 5. AGENTS.md updated | Docs reflect the architecture without Redpanda, quickstart works | Vinicius Espindola |
+| M3: Documentation | Update docs to reflect new architecture | — | 1. .github/overview.md updated 2. .github/pipeline.md updated 3. .github/onboarding.md updated 4. README.md updated 5. AGENTS.md updated | Docs reflect the architecture without Redpanda, quickstart works | Vinicius Espindola |
 
 ## 7. Dependencies
 
@@ -125,8 +125,8 @@ Remove Redpanda/Kafka from the ingestion stack and have Octantis expose a native
 
 - [OTLP Specification](https://opentelemetry.io/docs/specs/otlp/) — OTLP protocol (gRPC + HTTP)
 - [opentelemetry-proto Python package](https://github.com/open-telemetry/opentelemetry-python/tree/main/opentelemetry-proto) — Official Protobuf definitions
-- `docs/overview.md` — Current Octantis architecture
-- `docs/pipeline.md` — Current filtering pipeline
+- `.github/overview.md` — Current Octantis architecture
+- `.github/pipeline.md` — Current filtering pipeline
 - `src/octantis/consumers/redpanda.py` — Current parser (reference for field mapping)
 
 ## 10. Architecture Overview
