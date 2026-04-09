@@ -32,6 +32,11 @@ spec:
       containers:
         - name: mcp-grafana
           image: ghcr.io/vinny1892/mcp-grafana:latest
+          args:
+            - --enabled-tools=prometheus,loki
+            - --disable-oncall
+            - --disable-incident
+            - --disable-sift
           ports:
             - name: sse
               containerPort: 8000
