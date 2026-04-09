@@ -7,7 +7,7 @@ description: "Deep-dive into the two layers that separate signal from noise befo
 
 > **Why this doc exists:** Octantis's operational cost is proportional to the number of LLM calls. An active infrastructure environment emits hundreds of events per minute — the vast majority are health checks, normal-range metrics, and informational logs with no diagnostic value. The filter pipeline is the layer that absorbs this volume and delivers to the LLM **only the events that have a real chance of being a problem**.
 
-## Table of Contents
+## List of Contents
 
 - [The Two Layers](#the-two-layers)
 - [Layer 1 — TriggerFilter](#layer-1--triggerfilter)

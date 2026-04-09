@@ -2,7 +2,7 @@
 
 Deployment and configuration examples for Octantis.
 
-## Table of Contents
+## List of Contents
 
 - [Deployment Options](#deployment-options)
   - [Docker Compose (Local Development)](#docker-compose-local-development)

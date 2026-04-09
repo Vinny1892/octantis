@@ -2,7 +2,7 @@
 
 Local Kind cluster with a full observability stack for Octantis development and testing.
 
-## Table of Contents
+## List of Contents
 
 - [Prerequisites](#prerequisites)
 - [Quick Setup](#quick-setup)

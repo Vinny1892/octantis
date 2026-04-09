@@ -7,7 +7,7 @@ description: "Deep-dive into the four workflow nodes: investigate → analyze �
 
 > When the filter pipeline decides an event warrants investigation, it hands an `InfraEvent` to the LangGraph workflow. From here, all logic is orchestrated by a state graph compiled in `graph/workflow.py`.
 
-## Table of Contents
+## List of Contents
 
 - [The State Graph](#the-state-graph)
 - [Node 1 — investigate](#node-1--investigate)

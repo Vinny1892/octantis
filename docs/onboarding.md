@@ -5,7 +5,7 @@ description: "How to set up Octantis and contribute to the codebase"
 
 # Onboarding — Zero to Running
 
-## Table of Contents
+## List of Contents
 
 - [Prerequisites](#prerequisites)
 - [Container Image](#container-image)

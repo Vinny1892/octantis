@@ -24,7 +24,7 @@ references:
 >
 > Based on: [PRD 001 — Direct OTLP Ingestion — Redpanda Removal](../prds/prd-001-otlp-direct-ingestion.md)
 
-## Table of Contents
+## List of Contents
 
 - [1. Context](#1-context)
 - [2. Objective](#2-objective)

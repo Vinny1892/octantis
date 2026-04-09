@@ -24,7 +24,7 @@ references:
 >
 > Based on: [PRD 002 — Grafana MCP Analysis](../prds/prd-002-grafana-mcp-analysis.md)
 
-## Table of Contents
+## List of Contents
 
 - [1. Context](#1-context)
 - [2. Objective](#2-objective)
