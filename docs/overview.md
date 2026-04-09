@@ -7,6 +7,15 @@ description: "How the intelligent monitoring agent works end-to-end"
 
 Octantis is an AI agent that intelligently monitors infrastructure. Instead of firing alerts for every breached threshold, it uses an LLM to evaluate the **real operational impact** — distinguishing a genuine crash from a false positive or a noisy metric.
 
+## Table of Contents
+
+- [The Problem Octantis Solves](#the-problem-octantis-solves)
+- [Complete Data Flow](#complete-data-flow)
+- [Main Components](#main-components)
+- [Directory Structure](#directory-structure)
+- [Core Data Models](#core-data-models)
+- [Quick Configuration](#quick-configuration)
+
 ## The Problem Octantis Solves
 
 Traditional monitoring systems generate alerts based on simple thresholds:

@@ -2,6 +2,18 @@
 
 Deployment and configuration examples for Octantis.
 
+## Table of Contents
+
+- [Deployment Options](#deployment-options)
+  - [Docker Compose (Local Development)](#docker-compose-local-development)
+  - [Kubernetes (Production)](#kubernetes-production)
+  - [Key Environment Variables](#key-environment-variables)
+- [OTel Collector Configuration](#otel-collector-configuration)
+  - [Versions](#versions)
+  - [collector-config.yaml](#collector-configyaml)
+  - [otel-operator/](#otel-operator)
+  - [Pipeline Overview](#pipeline-overview)
+
 ## Deployment Options
 
 ### Docker Compose (Local Development)

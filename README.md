@@ -2,6 +2,18 @@
 
 Intelligent infrastructure monitoring agent. Receives metrics and logs via OTLP, uses an LLM to autonomously investigate and classify incidents, and notifies Slack/Discord with a concrete remediation plan.
 
+## Table of Contents
+
+- [How it works](#how-it-works)
+- [Container Image](#container-image)
+- [Quickstart — Kind Dev Cluster](#quickstart--kind-dev-cluster)
+- [Deploy to a Kubernetes Cluster](#deploy-to-a-kubernetes-cluster)
+- [Configuration](#configuration)
+- [MCP Servers](#mcp-servers)
+- [Severity Levels](#severity-levels)
+- [Development](#development)
+- [Documentation](#documentation)
+
 ## How it works
 
 ```

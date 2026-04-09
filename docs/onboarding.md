@@ -5,6 +5,20 @@ description: "How to set up Octantis and contribute to the codebase"
 
 # Onboarding — Zero to Running
 
+## Table of Contents
+
+- [Prerequisites](#prerequisites)
+- [Container Image](#container-image)
+- [Setup — Kind Dev Cluster (recommended)](#setup--kind-dev-cluster-recommended)
+- [Deploy to an Existing Kubernetes Cluster](#deploy-to-an-existing-kubernetes-cluster)
+  - [Bedrock Example](#bedrock-example)
+- [Local Development](#local-development)
+- [Sending a Test Event](#sending-a-test-event)
+- [Running Tests](#running-tests)
+  - [Lint and Formatting](#lint-and-formatting)
+- [Code Reading Map](#code-reading-map)
+- [Environment Variables — Full Reference](#environment-variables--full-reference)
+
 ## Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/)

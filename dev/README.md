@@ -2,6 +2,19 @@
 
 Local Kind cluster with a full observability stack for Octantis development and testing.
 
+## Table of Contents
+
+- [Prerequisites](#prerequisites)
+- [Quick Setup](#quick-setup)
+- [Cluster Architecture](#cluster-architecture)
+- [Components](#components)
+- [Local DNS](#local-dns-devdns-setupsh)
+- [Secrets](#secrets)
+- [ServiceMonitors](#servicemonitors)
+- [Scripts](#scripts)
+- [File Structure](#file-structure)
+- [Troubleshooting](#troubleshooting)
+
 ## Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/)

@@ -7,6 +7,35 @@ description: "Deep-dive into the four workflow nodes: investigate → analyze �
 
 > When the filter pipeline decides an event warrants investigation, it hands an `InfraEvent` to the LangGraph workflow. From here, all logic is orchestrated by a state graph compiled in `graph/workflow.py`.
 
+## Table of Contents
+
+- [The State Graph](#the-state-graph)
+- [Node 1 — investigate](#node-1--investigate)
+  - [MCP Connection](#mcp-connection)
+  - [The System Prompt](#the-system-prompt)
+  - [The ReAct Loop](#the-react-loop)
+  - [Budget and Timeout](#budget-and-timeout)
+  - [MCPQueryRecord](#mcpqueryrecord)
+  - [Degraded Mode](#degraded-mode)
+  - [Separate LLM Model](#separate-llm-model)
+- [Node 2 — analyze](#node-2--analyze)
+  - [The System Prompt](#the-system-prompt-1)
+  - [Context Sent to the LLM](#context-sent-to-the-llm)
+  - [Output and Fallback](#output-and-fallback)
+- [Conditional Edge — \_should\_notify](#conditional-edge--_should_notify)
+- [Node 3 — plan](#node-3--plan)
+  - [The Planner System Prompt](#the-planner-system-prompt)
+  - [ActionPlan and StepType](#actionplan-and-steptype)
+- [Node 4 — notify](#node-4--notify)
+  - [MCP Degradation Warning](#mcp-degradation-warning)
+  - [Slack — Block Kit](#slack--block-kit)
+  - [Discord — Embeds](#discord--embeds)
+- [Complete Sequence — CRITICAL Event](#complete-sequence--critical-event)
+- [Internal Metrics](#internal-metrics)
+- [Agent Configuration](#agent-configuration)
+- [Output Language (LANGUAGE)](#output-language-language)
+- [Agent Failure Modes](#agent-failure-modes)
+
 ## The State Graph
 
 ```mermaid

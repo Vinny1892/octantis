@@ -7,6 +7,25 @@ description: "Deep-dive into the two layers that separate signal from noise befo
 
 > **Why this doc exists:** Octantis's operational cost is proportional to the number of LLM calls. An active infrastructure environment emits hundreds of events per minute — the vast majority are health checks, normal-range metrics, and informational logs with no diagnostic value. The filter pipeline is the layer that absorbs this volume and delivers to the LLM **only the events that have a real chance of being a problem**.
 
+## Table of Contents
+
+- [The Two Layers](#the-two-layers)
+- [Layer 1 — TriggerFilter](#layer-1--triggerfilter)
+  - [Chain of Responsibility](#chain-of-responsibility)
+  - [Rule 1 — NoSignalRule](#rule-1--nosignalrule)
+  - [Rule 2 — HealthCheckRule](#rule-2--healthcheckrule)
+  - [Rule 3 — BenignPatternRule](#rule-3--benignpatternrule)
+  - [Rule 4 — MetricThresholdRule](#rule-4--metricthresholdrule)
+  - [Rule 5 — LogSeverityRule](#rule-5--logseverityrule)
+- [Layer 2 — FingerprintCooldown](#layer-2--fingerprintcooldown)
+  - [Fingerprint Generation](#fingerprint-generation)
+  - [Cooldown Logic](#cooldown-logic)
+  - [LRU Eviction](#lru-eviction)
+- [Configuration](#configuration)
+  - [Configuration Trade-offs](#configuration-trade-offs)
+- [How to Add a New Rule](#how-to-add-a-new-rule)
+- [Pipeline Observability](#pipeline-observability)
+
 ## The Two Layers
 
 ```mermaid
