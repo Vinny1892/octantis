@@ -1,0 +1,20 @@
+{{- if and .Values.otelOperator.enabled .Values.otelCollector.enabled }}
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: {{ include "octantis.fullname" . }}-collector
+  labels:
+    {{- include "octantis.labels" . | nindent 4 }}
+    app.kubernetes.io/component: otel-collector
+spec:
+  mode: {{ .Values.otelCollectorCR.mode }}
+  config:
+    exporters:
+      otlp:
+        endpoint: {{ printf "http://%s:%d" (include "octantis.fullname" .) (int .Values.octantis.otlp.grpc.port) }}
+        tls:
+          insecure: true
+    {{- if .Values.otelCollector.config }}
+    {{- toYaml .Values.otelCollector.config | nindent 4 }}
+    {{- end }}
+{{- end }}

@@ -42,6 +42,37 @@ jobs:
       - run: uv sync --frozen
       - run: uv run pytest --tb=short -q
 
+  helm:
+    name: Helm Chart Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+
+      - name: Helm dependency update
+        run: helm dependency update charts/octantis/
+
+      - name: Helm lint
+        run: helm lint charts/octantis/
+
+      - name: Test all toggle combinations
+        run: |
+          for otel in true false; do
+            for operator in true false; do
+              for grafana in true false; do
+                for k8s in true false; do
+                  echo "Testing: otel=$otel operator=$operator grafana=$grafana k8s=$k8s"
+                  helm template octantis charts/octantis/ \
+                    --set otelCollector.enabled=$otel \
+                    --set otelOperator.enabled=$operator \
+                    --set grafanaMcp.enabled=$grafana \
+                    --set k8sMcp.enabled=$k8s > /dev/null
+                done
+              done
+            done
+          done
+
   docker:
     name: Build & Push Image
     runs-on: ubuntu-latest

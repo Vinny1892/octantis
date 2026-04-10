@@ -1,0 +1,59 @@
+octantis:
+  image:
+    tag: "latest"
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
+secrets:
+  anthropicApiKey:
+    externalsecret:
+      create: true
+      spec:
+        refreshInterval: "5m"
+        secretStoreRef:
+          name: vault-backend
+          kind: ClusterSecretStore
+        remoteRef:
+          key: secret/octantis/anthropic-api-key
+  grafanaMcpApiKey:
+    externalsecret:
+      create: true
+      spec:
+        refreshInterval: "5m"
+        secretStoreRef:
+          name: vault-backend
+          kind: ClusterSecretStore
+        remoteRef:
+          key: secret/octantis/grafana-mcp-api-key
+  slackWebhookUrl:
+    externalsecret:
+      create: true
+      spec:
+        refreshInterval: "5m"
+        secretStoreRef:
+          name: vault-backend
+          kind: ClusterSecretStore
+        remoteRef:
+          key: secret/octantis/slack-webhook-url
+
+grafanaMcp:
+  enabled: true
+  grafanaUrl: "http://grafana.monitoring.svc.cluster.local:3000"
+
+k8sMcp:
+  enabled: true
+
+otelCollector:
+  enabled: true
+  mode: deployment
+
+otelOperator:
+  enabled: true
+
+otelCollectorCR:
+  mode: deployment

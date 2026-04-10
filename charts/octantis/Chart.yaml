@@ -1,0 +1,29 @@
+apiVersion: v2
+name: octantis
+description: AI-powered infrastructure monitoring agent for EKS/Kubernetes
+type: application
+version: 0.1.0
+appVersion: "latest"
+home: https://github.com/vinny1892/octantis
+sources:
+  - https://github.com/vinny1892/octantis
+maintainers:
+  - name: Vinicius Espindola
+annotations:
+  artifacthub.io/license: MIT
+  artifacthub.io/changes: |
+    - kind: added
+      description: Initial chart release with modular deployment support
+
+dependencies:
+  - name: opentelemetry-collector
+    version: "~0.112.0"
+    repository: https://open-telemetry.github.io/opentelemetry-helm-charts
+    condition: otelCollector.enabled
+    alias: otelCollector
+
+  - name: opentelemetry-operator
+    version: "~0.74.0"
+    repository: https://open-telemetry.github.io/opentelemetry-helm-charts
+    condition: otelOperator.enabled
+    alias: otelOperator

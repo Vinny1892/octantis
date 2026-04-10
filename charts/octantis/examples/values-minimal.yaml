@@ -1,0 +1,27 @@
+octantis:
+  image:
+    tag: "latest"
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
+secrets:
+  anthropicApiKey:
+    create: true
+    value: "CHANGE_ME"
+
+grafanaMcp:
+  enabled: false
+
+k8sMcp:
+  enabled: false
+
+otelCollector:
+  enabled: false
+
+otelOperator:
+  enabled: false

@@ -1,0 +1,41 @@
+Octantis has been deployed!
+
+1. Check pod status:
+   kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }}
+
+2. View logs:
+   kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/name=octantis -f
+
+3. Send a test OTLP metric (requires otel-cli or similar):
+   otel-cli push --endpoint http://{{ include "octantis.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:4317 --protocol grpc
+
+{{- if not (include "octantis.mcpConfigured" .) }}
+
+⚠️  WARNING: No MCP server is configured.
+   Octantis requires at least one MCP server for investigation.
+   Enable one via values:
+     grafanaMcp.enabled: true
+     k8sMcp.enabled: true
+   Or set an external MCP URL:
+     octantis.externalMcp.grafanaUrl: "http://my-mcp:8080/sse"
+{{- end }}
+
+{{- if include "octantis.anyExternalSecret" . }}
+
+ℹ️  NOTE: External Secrets Operator is required.
+   One or more ExternalSecret CRs were created.
+   Ensure External Secrets Operator is installed in the cluster:
+     https://external-secrets.io/latest/introduction/getting-started/
+{{- end }}
+
+{{- if .Values.grafanaMcp.enabled }}
+
+4. Grafana MCP is enabled and auto-wired:
+   URL: {{ include "octantis.grafanaMcpUrl" . }}
+{{- end }}
+
+{{- if .Values.k8sMcp.enabled }}
+
+5. K8s MCP is enabled and auto-wired:
+   URL: {{ include "octantis.k8sMcpUrl" . }}
+{{- end }}

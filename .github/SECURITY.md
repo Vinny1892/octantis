@@ -56,3 +56,54 @@ The Kubernetes MCP server (`mcp-k8s`) runs with a dedicated ServiceAccount restr
 ## Reporting Vulnerabilities
 
 If you find a security issue, please open a GitHub issue or contact the maintainer directly.
+
+## Helm Chart — Secrets Management
+
+The Octantis Helm chart supports three secrets management modes, controlled via `values.yaml`:
+
+### Mode 1: Chart-managed Kubernetes Secrets (`create: true`)
+
+The chart creates native Kubernetes Secrets from values. Suitable for development only — secret values are stored in Helm release data (etcd).
+
+```yaml
+secrets:
+  anthropicApiKey:
+    create: true
+    value: "sk-ant-..."
+```
+
+### Mode 2: Existing Secret references (`existingSecret`)
+
+The chart references a pre-existing Kubernetes Secret. Use with External Secrets Operator, Sealed Secrets, or manual Secret management.
+
+```yaml
+secrets:
+  anthropicApiKey:
+    existingSecret: "my-vault-secret"
+```
+
+### Mode 3: ExternalSecret CR (`externalsecret.create`)
+
+The chart creates ExternalSecret CRs that sync secrets from external backends (Vault, AWS Secrets Manager, GCP Secret Manager) via External Secrets Operator.
+
+```yaml
+secrets:
+  anthropicApiKey:
+    externalsecret:
+      create: true
+      spec:
+        secretStoreRef:
+          name: vault-backend
+          kind: ClusterSecretStore
+        remoteRef:
+          key: secret/octantis/anthropic-key
+```
+
+**Priority**: `existingSecret` > `externalsecret` > `create`. No sensitive values are stored in `values.yaml` defaults.
+
+### Pod Security
+
+- All containers run as non-root where the base image supports it
+- No `privileged: true` or `hostNetwork: true` by default
+- SecurityContext is configurable via values for each component
+- K8s MCP ClusterRole is strictly read-only (`get`, `list`, `watch`) — no write verbs

@@ -1,0 +1,19 @@
+{{- if .Values.grafanaMcp.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "octantis.fullname" . }}-grafana-mcp
+  labels:
+    {{- include "octantis.labels" . | nindent 4 }}
+    app.kubernetes.io/component: grafana-mcp
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "octantis.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: grafana-mcp
+  ports:
+    - name: sse
+      port: {{ .Values.grafanaMcp.port }}
+      targetPort: sse
+      protocol: TCP
+{{- end }}

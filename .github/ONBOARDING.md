@@ -77,7 +77,29 @@ See [`dev/README.md`](../dev/README.md) for full details (architecture, troubles
 
 ## Deploy to an Existing Kubernetes Cluster
 
-To deploy on an existing Kubernetes cluster (EKS, GKE, AKS, etc.), use the example manifests:
+### Helm Chart (recommended)
+
+```bash
+# Add the chart repository
+helm registry login ghcr.io
+
+# Install Octantis only (minimal)
+helm install octantis oci://ghcr.io/vinny1892/charts/octantis \
+  -n monitoring --create-namespace \
+  --set secrets.anthropicApiKey.create=true \
+  --set secrets.anthropicApiKey.value="sk-ant-..."
+
+# Install with Grafana MCP and K8s MCP
+helm install octantis oci://ghcr.io/vinny1892/charts/octantis \
+  -n monitoring --create-namespace \
+  -f charts/octantis/examples/values-full-stack.yaml
+```
+
+See [`charts/octantis/README.md`](../charts/octantis/README.md) for the full configuration reference, secrets management (native K8s Secrets, External Secrets Operator, existing Secrets), and example values files.
+
+### Example Manifests (alternative)
+
+For quick testing without Helm, use the static manifests:
 
 ```bash
 # 1. Create namespace and secrets

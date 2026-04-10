@@ -1,0 +1,40 @@
+{{- if .Values.k8sMcp.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "octantis.fullname" . }}-k8s-mcp
+  labels:
+    {{- include "octantis.labels" . | nindent 4 }}
+    app.kubernetes.io/component: k8s-mcp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "octantis.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: k8s-mcp
+  template:
+    metadata:
+      labels:
+        {{- include "octantis.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: k8s-mcp
+    spec:
+      serviceAccountName: {{ include "octantis.k8sMcp.serviceAccountName" . }}
+      containers:
+        - name: mcp-k8s
+          image: "{{ .Values.k8sMcp.image.repository }}:{{ .Values.k8sMcp.image.tag }}"
+          imagePullPolicy: {{ .Values.k8sMcp.image.pullPolicy }}
+          args:
+            {{- range .Values.k8sMcp.args }}
+            - {{ . }}
+            {{- end }}
+          ports:
+            - name: sse
+              containerPort: {{ .Values.k8sMcp.containerPort }}
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.k8sMcp.resources | nindent 12 }}
+          livenessProbe:
+            {{- toYaml .Values.k8sMcp.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.k8sMcp.readinessProbe | nindent 12 }}
+{{- end }}

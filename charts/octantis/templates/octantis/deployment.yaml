@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "octantis.fullname" . }}
+  labels:
+    {{- include "octantis.labels" . | nindent 4 }}
+    app.kubernetes.io/component: octantis
+spec:
+  replicas: {{ .Values.octantis.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "octantis.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: octantis
+  template:
+    metadata:
+      labels:
+        {{- include "octantis.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: octantis
+      annotations:
+        {{- toYaml .Values.octantis.podAnnotations | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "octantis.serviceAccountName" . }}
+      containers:
+        - name: octantis
+          image: "{{ .Values.octantis.image.repository }}:{{ include "octantis.imageTag" . }}"
+          imagePullPolicy: {{ .Values.octantis.image.pullPolicy }}
+          ports:
+            - name: otlp-grpc
+              containerPort: {{ .Values.octantis.otlp.grpc.port }}
+              protocol: TCP
+            - name: otlp-http
+              containerPort: {{ .Values.octantis.otlp.http.port }}
+              protocol: TCP
+            - name: metrics
+              containerPort: {{ .Values.octantis.metrics.port }}
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "octantis.fullname" . }}
+          env:
+            {{- range $key, $secret := .Values.secrets }}
+            {{- if $secret.existingSecret }}
+            - name: {{ $secret.key }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secret.existingSecret }}
+                  key: {{ $secret.key }}
+            {{- else if $secret.externalsecret.create }}
+            - name: {{ $secret.key }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ printf "%s-%s" (include "octantis.fullname" $) $key }}
+                  key: {{ $secret.key }}
+            {{- else if $secret.create }}
+            - name: {{ $secret.key }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ printf "%s-%s" (include "octantis.fullname" $) $key }}
+                  key: {{ $secret.key }}
+            {{- end }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.octantis.resources | nindent 12 }}
+          livenessProbe:
+            tcpSocket:
+              port: otlp-grpc
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            tcpSocket:
+              port: otlp-grpc
+            initialDelaySeconds: 5
+            periodSeconds: 10

@@ -1,0 +1,247 @@
+octantis:
+  image:
+    repository: ghcr.io/vinny1892/octantis
+    tag: ""
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+  serviceAccount:
+    create: true
+    name: ""
+    annotations: {}
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+    prometheus.io/path: "/metrics"
+
+  otlp:
+    grpc:
+      enabled: true
+      port: 4317
+    http:
+      enabled: true
+      port: 4318
+    queueMaxSize: 1000
+
+  llm:
+    provider: anthropic
+    model: claude-sonnet-4-6
+    investigationModel: ""
+    maxTokens: 2048
+    temperature: 0.1
+
+  investigation:
+    maxQueries: 10
+    timeoutSeconds: 60
+    queryTimeoutSeconds: 10
+
+  pipeline:
+    cpuThreshold: 75.0
+    memoryThreshold: 80.0
+    errorRateThreshold: 0.01
+    cooldownSeconds: 300
+    cooldownMaxEntries: 1000
+    benignPatterns: ""
+
+  notifications:
+    minSeverityToNotify: MODERATE
+    slack:
+      channel: "#infra-alerts"
+      botToken: ""
+    discord: {}
+
+  metrics:
+    enabled: true
+    port: 9090
+
+  logLevel: INFO
+  language: en
+
+  externalMcp:
+    grafanaUrl: ""
+    k8sUrl: ""
+    dockerUrl: ""
+    awsUrl: ""
+
+secrets:
+  anthropicApiKey:
+    create: false
+    value: ""
+    existingSecret: ""
+    key: ANTHROPIC_API_KEY
+    externalsecret:
+      create: false
+      spec:
+        refreshInterval: "1h"
+        secretStoreRef:
+          name: ""
+          kind: SecretStore
+        remoteRef:
+          key: ""
+          property: ""
+  openrouterApiKey:
+    create: false
+    value: ""
+    existingSecret: ""
+    key: OPENROUTER_API_KEY
+    externalsecret:
+      create: false
+      spec:
+        refreshInterval: "1h"
+        secretStoreRef:
+          name: ""
+          kind: SecretStore
+        remoteRef:
+          key: ""
+          property: ""
+  grafanaMcpApiKey:
+    create: false
+    value: ""
+    existingSecret: ""
+    key: GRAFANA_MCP_API_KEY
+    externalsecret:
+      create: false
+      spec:
+        refreshInterval: "1h"
+        secretStoreRef:
+          name: ""
+          kind: SecretStore
+        remoteRef:
+          key: ""
+          property: ""
+  slackWebhookUrl:
+    create: false
+    value: ""
+    existingSecret: ""
+    key: SLACK_WEBHOOK_URL
+    externalsecret:
+      create: false
+      spec:
+        refreshInterval: "1h"
+        secretStoreRef:
+          name: ""
+          kind: SecretStore
+        remoteRef:
+          key: ""
+          property: ""
+  discordWebhookUrl:
+    create: false
+    value: ""
+    existingSecret: ""
+    key: DISCORD_WEBHOOK_URL
+    externalsecret:
+      create: false
+      spec:
+        refreshInterval: "1h"
+        secretStoreRef:
+          name: ""
+          kind: SecretStore
+        remoteRef:
+          key: ""
+          property: ""
+
+grafanaMcp:
+  enabled: false
+  image:
+    repository: ghcr.io/vinny1892/mcp-grafana
+    tag: latest
+    pullPolicy: IfNotPresent
+  port: 8080
+  containerPort: 8000
+  grafanaUrl: "http://grafana.monitoring.svc.cluster.local:3000"
+  enabledTools: "prometheus,loki"
+  extraArgs:
+    - --disable-oncall
+    - --disable-incident
+    - --disable-sift
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  livenessProbe:
+    tcpSocket:
+      port: sse
+    initialDelaySeconds: 10
+    periodSeconds: 30
+  readinessProbe:
+    tcpSocket:
+      port: sse
+    initialDelaySeconds: 5
+    periodSeconds: 10
+
+k8sMcp:
+  enabled: false
+  image:
+    repository: ghcr.io/containers/kubernetes-mcp-server
+    tag: latest
+    pullPolicy: IfNotPresent
+  port: 8080
+  containerPort: 8080
+  args:
+    - --port
+    - "8080"
+    - --read-only
+    - --log-level
+    - "3"
+  serviceAccount:
+    create: true
+    name: ""
+  rbac:
+    create: true
+    additionalRules: []
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  livenessProbe:
+    tcpSocket:
+      port: sse
+    initialDelaySeconds: 10
+    periodSeconds: 30
+  readinessProbe:
+    tcpSocket:
+      port: sse
+    initialDelaySeconds: 5
+    periodSeconds: 10
+
+otelCollector:
+  enabled: false
+  mode: deployment
+  image:
+    repository: otel/opentelemetry-collector-k8s
+  config:
+    exporters:
+      otlp:
+        endpoint: ""
+        tls:
+          insecure: true
+    service:
+      pipelines:
+        metrics:
+          exporters:
+            - otlp
+        logs:
+          exporters:
+            - otlp
+
+otelOperator:
+  enabled: false
+  manager:
+    featureGates: ""
+    collectorImage:
+      repository: otel/opentelemetry-collector-k8s
+
+otelCollectorCR:
+  mode: deployment

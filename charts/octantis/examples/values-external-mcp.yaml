@@ -1,0 +1,22 @@
+octantis:
+  image:
+    tag: "latest"
+  externalMcp:
+    grafanaUrl: "http://mcp-grafana.external.svc.cluster.local:8080/sse"
+    k8sUrl: "http://mcp-k8s.external.svc.cluster.local:8080/sse"
+
+secrets:
+  anthropicApiKey:
+    existingSecret: "octantis-secrets"
+
+grafanaMcp:
+  enabled: false
+
+k8sMcp:
+  enabled: false
+
+otelCollector:
+  enabled: false
+
+otelOperator:
+  enabled: false

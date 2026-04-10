@@ -1,0 +1,54 @@
+{{- if .Values.grafanaMcp.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "octantis.fullname" . }}-grafana-mcp
+  labels:
+    {{- include "octantis.labels" . | nindent 4 }}
+    app.kubernetes.io/component: grafana-mcp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "octantis.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: grafana-mcp
+  template:
+    metadata:
+      labels:
+        {{- include "octantis.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: grafana-mcp
+    spec:
+      containers:
+        - name: mcp-grafana
+          image: "{{ .Values.grafanaMcp.image.repository }}:{{ .Values.grafanaMcp.image.tag }}"
+          imagePullPolicy: {{ .Values.grafanaMcp.image.pullPolicy }}
+          args:
+            - --enabled-tools={{ .Values.grafanaMcp.enabledTools }}
+            {{- range .Values.grafanaMcp.extraArgs }}
+            - {{ . }}
+            {{- end }}
+          ports:
+            - name: sse
+              containerPort: {{ .Values.grafanaMcp.containerPort }}
+              protocol: TCP
+          env:
+            - name: GRAFANA_URL
+              value: {{ .Values.grafanaMcp.grafanaUrl | quote }}
+            {{- if or .Values.secrets.grafanaMcpApiKey.create .Values.secrets.grafanaMcpApiKey.existingSecret .Values.secrets.grafanaMcpApiKey.externalsecret.create }}
+            - name: GRAFANA_SERVICE_ACCOUNT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  {{- if .Values.secrets.grafanaMcpApiKey.existingSecret }}
+                  name: {{ .Values.secrets.grafanaMcpApiKey.existingSecret }}
+                  {{- else }}
+                  name: {{ printf "%s-grafanaMcpApiKey" (include "octantis.fullname" .) }}
+                  {{- end }}
+                  key: {{ .Values.secrets.grafanaMcpApiKey.key }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.grafanaMcp.resources | nindent 12 }}
+          livenessProbe:
+            {{- toYaml .Values.grafanaMcp.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.grafanaMcp.readinessProbe | nindent 12 }}
+{{- end }}

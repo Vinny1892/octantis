@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "octantis.fullname" . }}
+  labels:
+    {{- include "octantis.labels" . | nindent 4 }}
+    app.kubernetes.io/component: octantis
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "octantis.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: octantis
+  ports:
+    {{- if .Values.octantis.otlp.grpc.enabled }}
+    - name: otlp-grpc
+      port: {{ .Values.octantis.otlp.grpc.port }}
+      targetPort: otlp-grpc
+      protocol: TCP
+    {{- end }}
+    {{- if .Values.octantis.otlp.http.enabled }}
+    - name: otlp-http
+      port: {{ .Values.octantis.otlp.http.port }}
+      targetPort: otlp-http
+      protocol: TCP
+    {{- end }}
+    {{- if .Values.octantis.metrics.enabled }}
+    - name: metrics
+      port: {{ .Values.octantis.metrics.port }}
+      targetPort: metrics
+      protocol: TCP
+    {{- end }}

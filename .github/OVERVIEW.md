@@ -89,6 +89,7 @@ flowchart TD
 | **Graph** | Orchestrates the LangGraph workflow | `graph/workflow.py` |
 | **Metrics** | 9 Prometheus metrics on `:9090/metrics` | `metrics.py` |
 | **Notifiers** | Formats and sends Slack Block Kit / Discord Embeds | `notifiers/` |
+| **Helm Chart** | Modular Kubernetes deployment with toggleable components | `charts/octantis/` |
 | **Config** | All configuration via env vars | `config.py` |
 
 ## Directory Structure
@@ -181,6 +182,14 @@ cp .env.example .env
 uv sync
 uv run octantis
 ```
+
+For Kubernetes deployment, use the Helm chart:
+
+```bash
+helm install octantis oci://ghcr.io/vinny1892/charts/octantis -n monitoring
+```
+
+See [`charts/octantis/README.md`](../charts/octantis/README.md) for the full configuration reference.
 
 See [Filter Pipeline](./PIPELINE.md) to understand how events are triaged before reaching the LLM.
 See [The LangGraph Agent](./AGENT.md) to understand the investigation, analysis, and notification workflow.

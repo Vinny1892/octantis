@@ -1,0 +1,240 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "octantis": {
+      "type": "object",
+      "properties": {
+        "image": {
+          "type": "object",
+          "properties": {
+            "repository": { "type": "string" },
+            "tag": { "type": "string" },
+            "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+          }
+        },
+        "replicaCount": { "type": "integer", "minimum": 1 },
+        "resources": {
+          "type": "object",
+          "properties": {
+            "requests": {
+              "type": "object",
+              "properties": {
+                "cpu": { "type": "string" },
+                "memory": { "type": "string" }
+              }
+            },
+            "limits": {
+              "type": "object",
+              "properties": {
+                "cpu": { "type": "string" },
+                "memory": { "type": "string" }
+              }
+            }
+          }
+        },
+        "serviceAccount": {
+          "type": "object",
+          "properties": {
+            "create": { "type": "boolean" },
+            "name": { "type": "string" },
+            "annotations": { "type": "object" }
+          }
+        },
+        "podAnnotations": { "type": "object" },
+        "otlp": {
+          "type": "object",
+          "properties": {
+            "grpc": {
+              "type": "object",
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "port": { "type": "integer" }
+              }
+            },
+            "http": {
+              "type": "object",
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "port": { "type": "integer" }
+              }
+            },
+            "queueMaxSize": { "type": "integer" }
+          }
+        },
+        "llm": {
+          "type": "object",
+          "properties": {
+            "provider": { "type": "string", "enum": ["anthropic", "openrouter", "bedrock"] },
+            "model": { "type": "string" },
+            "investigationModel": { "type": "string" },
+            "maxTokens": { "type": "integer" },
+            "temperature": { "type": "number" }
+          }
+        },
+        "investigation": {
+          "type": "object",
+          "properties": {
+            "maxQueries": { "type": "integer" },
+            "timeoutSeconds": { "type": "integer" },
+            "queryTimeoutSeconds": { "type": "integer" }
+          }
+        },
+        "pipeline": {
+          "type": "object",
+          "properties": {
+            "cpuThreshold": { "type": "number" },
+            "memoryThreshold": { "type": "number" },
+            "errorRateThreshold": { "type": "number" },
+            "cooldownSeconds": { "type": "number" },
+            "cooldownMaxEntries": { "type": "integer" },
+            "benignPatterns": { "type": "string" }
+          }
+        },
+        "notifications": {
+          "type": "object",
+          "properties": {
+            "minSeverityToNotify": { "type": "string", "enum": ["CRITICAL", "MODERATE", "LOW", "NOT_A_PROBLEM"] },
+            "slack": {
+              "type": "object",
+              "properties": {
+                "channel": { "type": "string" },
+                "botToken": { "type": "string" }
+              }
+            },
+            "discord": { "type": "object" }
+          }
+        },
+        "metrics": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "port": { "type": "integer" }
+          }
+        },
+        "logLevel": { "type": "string", "enum": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] },
+        "language": { "type": "string", "enum": ["en", "pt-br"] },
+        "externalMcp": {
+          "type": "object",
+          "properties": {
+            "grafanaUrl": { "type": "string" },
+            "k8sUrl": { "type": "string" },
+            "dockerUrl": { "type": "string" },
+            "awsUrl": { "type": "string" }
+          }
+        }
+      }
+    },
+    "secrets": {
+      "type": "object",
+      "patternProperties": {
+        ".*": {
+          "type": "object",
+          "properties": {
+            "create": { "type": "boolean" },
+            "value": { "type": "string" },
+            "existingSecret": { "type": "string" },
+            "key": { "type": "string" },
+            "externalsecret": {
+              "type": "object",
+              "properties": {
+                "create": { "type": "boolean" },
+                "spec": {
+                  "type": "object",
+                  "properties": {
+                    "refreshInterval": { "type": "string" },
+                    "secretStoreRef": {
+                      "type": "object",
+                      "properties": {
+                        "name": { "type": "string" },
+                        "kind": { "type": "string" }
+                      }
+                    },
+                    "remoteRef": {
+                      "type": "object",
+                      "properties": {
+                        "key": { "type": "string" },
+                        "property": { "type": "string" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "grafanaMcp": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "image": {
+          "type": "object",
+          "properties": {
+            "repository": { "type": "string" },
+            "tag": { "type": "string" },
+            "pullPolicy": { "type": "string" }
+          }
+        },
+        "port": { "type": "integer" },
+        "containerPort": { "type": "integer" },
+        "grafanaUrl": { "type": "string" },
+        "enabledTools": { "type": "string" },
+        "extraArgs": { "type": "array", "items": { "type": "string" } },
+        "resources": { "type": "object" }
+      }
+    },
+    "k8sMcp": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "image": {
+          "type": "object",
+          "properties": {
+            "repository": { "type": "string" },
+            "tag": { "type": "string" },
+            "pullPolicy": { "type": "string" }
+          }
+        },
+        "port": { "type": "integer" },
+        "containerPort": { "type": "integer" },
+        "args": { "type": "array", "items": { "type": "string" } },
+        "serviceAccount": {
+          "type": "object",
+          "properties": {
+            "create": { "type": "boolean" },
+            "name": { "type": "string" }
+          }
+        },
+        "rbac": {
+          "type": "object",
+          "properties": {
+            "create": { "type": "boolean" },
+            "additionalRules": { "type": "array" }
+          }
+        },
+        "resources": { "type": "object" }
+      }
+    },
+    "otelCollector": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "mode": { "type": "string", "enum": ["deployment", "daemonset", "statefulset"] }
+      }
+    },
+    "otelOperator": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "collector": {
+          "type": "object",
+          "properties": {
+            "mode": { "type": "string", "enum": ["deployment", "daemonset", "sidecar"] }
+          }
+        }
+      }
+    }
+  }
+}
