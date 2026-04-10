@@ -59,12 +59,15 @@ jobs:
             for operator in true false; do
               for grafana in true false; do
                 for k8s in true false; do
-                  echo "Testing: otel=$otel operator=$operator grafana=$grafana k8s=$k8s"
-                  helm template octantis charts/octantis/ \
-                    --set otelCollector.enabled=$otel \
-                    --set otelOperator.enabled=$operator \
-                    --set grafanaMcp.enabled=$grafana \
-                    --set k8sMcp.enabled=$k8s > /dev/null
+                  for kps in true false; do
+                    echo "Testing: otel=$otel operator=$operator grafana=$grafana k8s=$k8s kps=$kps"
+                    helm template octantis charts/octantis/ \
+                      --set otelCollector.enabled=$otel \
+                      --set otelOperator.enabled=$operator \
+                      --set grafanaMcp.enabled=$grafana \
+                      --set k8sMcp.enabled=$k8s \
+                      --set kubePrometheusStack.enabled=$kps > /dev/null
+                  done
                 done
               done
             done

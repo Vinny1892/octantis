@@ -39,3 +39,20 @@ Octantis has been deployed!
 5. K8s MCP is enabled and auto-wired:
    URL: {{ include "octantis.k8sMcpUrl" . }}
 {{- end }}
+
+{{- if .Values.kubePrometheusStack.enabled }}
+
+6. kube-prometheus-stack is enabled:
+   {{- if .Values.kubePrometheusStack.grafana.enabled }}
+   Grafana:      http://{{ include "octantis.fullname" . }}-grafana:3000
+   {{- end }}
+   {{- if .Values.kubePrometheusStack.prometheus.enabled }}
+   Prometheus:   http://{{ include "octantis.fullname" . }}-prometheus:9090
+   {{- end }}
+   {{- if .Values.kubePrometheusStack.alertmanager.enabled }}
+   Alertmanager: http://{{ include "octantis.fullname" . }}-alertmanager:9093
+   {{- end }}
+   {{- if and .Values.kubePrometheusStack.grafana.enabled .Values.grafanaMcp.enabled }}
+   Grafana MCP is auto-wired to the in-chart Grafana instance.
+   {{- end }}
+{{- end }}

@@ -43,7 +43,6 @@ secrets:
 
 grafanaMcp:
   enabled: true
-  grafanaUrl: "http://grafana.monitoring.svc.cluster.local:3000"
 
 k8sMcp:
   enabled: true
@@ -57,3 +56,8 @@ otelOperator:
 
 otelCollectorCR:
   mode: deployment
+
+kubePrometheusStack:
+  enabled: true
+  grafana:
+    adminPassword: "admin"

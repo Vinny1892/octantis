@@ -9,12 +9,41 @@ metadata:
 spec:
   mode: {{ .Values.otelCollectorCR.mode }}
   config:
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+      {{- if and .Values.kubePrometheusStack.enabled .Values.kubePrometheusStack.prometheus.enabled }}
+      prometheus:
+        config:
+          scrape_configs:
+            - job_name: "kube-prometheus-stack"
+              scrape_interval: 30s
+              static_configs:
+                - targets:
+                    - {{ printf "%s-prometheus:9090" (include "octantis.fullname" .) }}
+      {{- end }}
     exporters:
       otlp:
         endpoint: {{ printf "http://%s:%d" (include "octantis.fullname" .) (int .Values.octantis.otlp.grpc.port) }}
         tls:
           insecure: true
-    {{- if .Values.otelCollector.config }}
-    {{- toYaml .Values.otelCollector.config | nindent 4 }}
-    {{- end }}
+    service:
+      pipelines:
+        metrics:
+          receivers:
+            - otlp
+            {{- if and .Values.kubePrometheusStack.enabled .Values.kubePrometheusStack.prometheus.enabled }}
+            - prometheus
+            {{- end }}
+          exporters:
+            - otlp
+        logs:
+          receivers:
+            - otlp
+          exporters:
+            - otlp
 {{- end }}

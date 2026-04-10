@@ -93,6 +93,15 @@ helm install octantis oci://ghcr.io/vinny1892/charts/octantis \
 helm install octantis oci://ghcr.io/vinny1892/charts/octantis \
   -n monitoring --create-namespace \
   -f charts/octantis/examples/values-full-stack.yaml
+
+# Install full stack including monitoring (kube-prometheus-stack)
+helm install octantis oci://ghcr.io/vinny1892/charts/octantis \
+  -n monitoring --create-namespace \
+  --set grafanaMcp.enabled=true \
+  --set k8sMcp.enabled=true \
+  --set otelCollector.enabled=true \
+  --set kubePrometheusStack.enabled=true \
+  --set kubePrometheusStack.grafana.adminPassword=admin
 ```
 
 See [`charts/octantis/README.md`](../charts/octantis/README.md) for the full configuration reference, secrets management (native K8s Secrets, External Secrets Operator, existing Secrets), and example values files.

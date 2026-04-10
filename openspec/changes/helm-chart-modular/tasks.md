@@ -35,10 +35,19 @@
 - [x] 5.1 Run `helm dependency update` to pull OTel Collector and Operator subcharts into `charts/octantis/charts/`
 - [x] 5.2 Create `charts/octantis/templates/otel/opentelemetrycollector-cr.yaml` rendered only when both otelOperator and otelCollector are enabled, with configurable mode
 
+- [x] 5.3 Add `kube-prometheus-stack` as conditional subchart dependency in `Chart.yaml`
+- [x] 5.4 Pull kube-prometheus-stack subchart and commit tgz
+- [x] 5.5 Add `kubePrometheusStack` values section in `values.yaml` with pass-through config
+- [x] 5.6 Auto-wire Grafana MCP `grafanaUrl` when kube-prometheus-stack is enabled alongside grafanaMcp
+- [x] 5.7 Configure OTel Collector Prometheus receiver when kube-prometheus-stack is enabled alongside otelCollector
+
 ## 6. Validation
 
 - [x] 6.1 Run `helm lint charts/octantis/` and fix any warnings or errors
 - [x] 6.2 Run `helm template` for all 16 toggle combinations and verify all render without errors
+- [x] 6.7 Run `helm template` for all 32 toggle combinations (2^5 with kubePrometheusStack) and verify all render
+- [x] 6.8 Verify kube-prometheus-stack + grafanaMcp auto-wires Grafana URL
+- [x] 6.9 Verify kube-prometheus-stack + otelCollector configures Prometheus receiver
 - [x] 6.3 Verify auto-wiring: enable grafanaMcp → GRAFANA_MCP_URL appears in ConfigMap
 - [x] 6.4 Verify auto-wiring: enable k8sMcp → K8S_MCP_URL appears in ConfigMap
 - [x] 6.5 Verify secrets priority: existingSecret > externalsecret > create
@@ -46,7 +55,8 @@
 
 ## 7. CI Pipeline
 
-- [x] 7.1 Add `helm` job to `.github/workflows/ci.yml` with helm dependency update, lint, and 16-combination template matrix
+- [x] 7.1 Add `helm` job to `.github/workflows/ci.yml` with lint and template matrix
+- [x] 7.3 Update CI template matrix to cover 32 combinations (2^5 with kubePrometheusStack)
 - [x] 7.2 Create `.github/workflows/helm-publish.yml` triggered on `chart-v*` tag: lint → template matrix → package → OCI push → git-cliff changelog → GitHub Release
 
 ## 8. ArtifactHub & Publishing
@@ -62,4 +72,7 @@
 - [x] 9.4 Create `charts/octantis/examples/values-external-mcp.yaml` (Octantis + external MCP URLs)
 - [x] 9.5 Update `.github/ONBOARDING.md` with Helm install as recommended K8s deployment method
 - [x] 9.6 Update `.github/OVERVIEW.md` to reference the Helm chart in the deployment section
-- [x] 9.7 Review `.github/SECURITY.md` and update with Helm chart security notes (three-mode secrets, ExternalSecret Operator, K8s MCP RBAC, PodSecurity)
+- [x] 9.8 Update `charts/octantis/README.md` with kube-prometheus-stack configuration section
+- [x] 9.9 Update example values to include kube-prometheus-stack options
+- [x] 9.10 Update `.github/ONBOARDING.md` to mention kube-prometheus-stack integration
+- [x] 9.11 Update `.github/OVERVIEW.md` architecture to include kube-prometheus-stack

@@ -20,7 +20,7 @@ The chart SHALL include example values files in `charts/octantis/examples/`: `va
 
 #### Scenario: Full stack example values
 - **WHEN** `charts/octantis/examples/values-full-stack.yaml` is read
-- **THEN** it SHALL enable all components (otelCollector, otelOperator, grafanaMcp, k8sMcp)
+- **THEN** it SHALL enable all components (otelCollector, otelOperator, grafanaMcp, k8sMcp, kubePrometheusStack)
 
 #### Scenario: External MCP example values
 - **WHEN** `charts/octantis/examples/values-external-mcp.yaml` is read

@@ -1,12 +1,12 @@
 ---
 prd_number: "004"
-summary: "Create a modular Helm chart for Octantis with toggleable components (OTel Collector, OTel Operator, Grafana MCP, K8s MCP) published to ghcr.io and ArtifactHub"
+summary: "Create a modular Helm chart for Octantis with toggleable components (OTel Collector, OTel Operator, Grafana MCP, K8s MCP, kube-prometheus-stack) published to ghcr.io and ArtifactHub"
 priority: media
 effort: medium
 created: 2026-04-10
 updated: 2026-04-10
 owner: Vinicius Espindola
-tags: [helm, kubernetes, deployment, distribution, otel, mcp]
+tags: [helm, kubernetes, deployment, distribution, otel, mcp, prometheus, monitoring]
 target_date: ""
 issue: ""
 depends_on: ["001", "002"]
@@ -49,14 +49,14 @@ references: ["003"]
 
 ### Overview
 
-Create a modular Helm chart where each component is independently toggleable via `values.yaml`. The operator chooses their desired stack — from Octantis-only (MCPs managed externally) to a full stack (Octantis + OTel Collector + OTel Operator + Grafana MCP + K8s MCP) — with a single `helm install`. External subcharts handle OTel Collector and OTel Operator. MCP servers (Grafana, K8s, and future Docker/AWS from PRD 003) are deployed as part of the chart when enabled.
+Create a modular Helm chart where each component is independently toggleable via `values.yaml`. The operator chooses their desired stack — from Octantis-only (MCPs managed externally) to a full stack (Octantis + OTel Collector + OTel Operator + Grafana MCP + K8s MCP + kube-prometheus-stack) — with a single `helm install`. External subcharts handle OTel Collector, OTel Operator, and kube-prometheus-stack. MCP servers (Grafana, K8s, and future Docker/AWS from PRD 003) are deployed as part of the chart when enabled.
 
 The chart is published to ghcr.io as an OCI artifact and listed on ArtifactHub for discoverability.
 
 ### Key Decisions
 
-1. **Modular toggles via values** — Every component beyond Octantis itself is optional and disabled by default. The operator enables what they need: `otelCollector.enabled`, `otelOperator.enabled`, `grafanaMcp.enabled`, `k8sMcp.enabled`. Octantis is always deployed.
-2. **OTel Collector and OTel Operator as subcharts** — Use the official OpenTelemetry Helm charts as dependencies rather than maintaining custom templates. Keeps the chart focused on Octantis-specific configuration.
+1. **Modular toggles via values** — Every component beyond Octantis itself is optional and disabled by default. The operator enables what they need: `otelCollector.enabled`, `otelOperator.enabled`, `grafanaMcp.enabled`, `k8sMcp.enabled`, `kubePrometheusStack.enabled`. Octantis is always deployed.
+2. **OTel Collector, OTel Operator, and kube-prometheus-stack as subcharts** — Use the official Helm charts as dependencies rather than maintaining custom templates. Keeps the chart focused on Octantis-specific configuration. kube-prometheus-stack provides Prometheus, Grafana, and Alertmanager when the operator wants a self-contained monitoring stack.
 3. **MCPs as in-chart templates** — Grafana MCP and K8s MCP are deployed as Deployments within the chart (not subcharts) since they are lightweight single-container services with minimal configuration.
 4. **Dual secrets support** — The chart supports both native Kubernetes Secrets (created by the chart) and ExternalSecrets (operator provides `existingSecret` references). Sensitive values are never in `values.yaml` defaults.
 5. **Independent chart versioning** — Chart version follows its own semver, decoupled from Octantis app version. `appVersion` in `Chart.yaml` tracks the Octantis image tag.
@@ -67,7 +67,7 @@ The chart is published to ghcr.io as an OCI artifact and listed on ArtifactHub f
 - **Docker Compose deployment** — Helm is K8s-only. Docker Compose users deploy manually or via a future PRD.
 - **Docker MCP and AWS MCP templates** — Deferred until PRD 003 implementation is complete. Chart structure will be extensible for adding them later.
 - **Ingress / Gateway API** — The chart exposes Services but does not create Ingress resources. Operators manage their own ingress.
-- **Monitoring stack deployment** — Prometheus, Loki, and Grafana are external prerequisites. The chart does not deploy them.
+- **Loki deployment** — Loki is an external prerequisite. The chart deploys Prometheus and Grafana via optional kube-prometheus-stack subchart but does not deploy Loki.
 - **Multi-cluster / federation** — Single cluster deployment only.
 
 ## 4. Features
@@ -81,7 +81,8 @@ The chart is published to ghcr.io as an OCI artifact and listed on ArtifactHub f
 | F05 | K8s MCP deployment | As an operator, I want to optionally deploy the K8s MCP server alongside Octantis so that investigations can query Kubernetes API | 1. Disabled by default (`k8sMcp.enabled: false`) 2. Deploys mcp-k8s as a Deployment + Service 3. Auto-configures `K8S_MCP_URL` on Octantis to point to the in-chart service 4. Creates a dedicated ServiceAccount + ClusterRole (read-only: get, list, watch) + ClusterRoleBinding for the K8s MCP pod 5. RBAC scope configurable via values | 1. Operator wants K8s MCP but manages it externally → leave disabled, set `K8S_MCP_URL` manually 2. Cluster has restrictive PodSecurityPolicy/admission → K8s MCP ServiceAccount may need additional annotations |
 | F06 | Secrets management | As an operator, I want to provide sensitive values (API keys, tokens) either via Kubernetes Secrets created by the chart or via ExternalSecrets so that credentials are never stored in values.yaml | 1. For each secret (Anthropic API key, Grafana API key, etc.), support two modes: `create: true` (chart creates the Secret from values) or `existingSecret: "name"` (reference an existing Secret) 2. When `existingSecret` is set, `create` is ignored 3. Secret keys are configurable (`secretKeyRef.key`) 4. All sensitive env vars on Octantis pod reference Secrets, never plain values | 1. Neither `create` nor `existingSecret` set for a required secret → pod stays in `Pending` with clear error in events 2. ExternalSecret not yet synced when Octantis starts → pod retries via restart policy |
 | F07 | Chart publishing | As a user, I want to discover and install Octantis via `helm repo add` or `helm pull oci://` so that I can install it like any other Helm chart | 1. Chart published as OCI artifact to `ghcr.io/[owner]/charts/octantis` 2. ArtifactHub metadata via `artifacthub-repo.yml` in the repo root 3. Chart version follows semver, independent from Octantis app version 4. `appVersion` in Chart.yaml tracks the Octantis Docker image tag | 1. OCI push fails in CI → publish is retried, no partial artifacts 2. Chart version already exists on ghcr.io → CI fails with clear error (no silent overwrite) |
-| F08 | Chart tests | As a developer, I want automated tests for the Helm chart so that all toggle combinations and edge cases are validated in CI before publishing | 1. `helm lint` runs on every PR and before publish 2. `helm template` validates all 16 toggle combinations (2^4: OTel/Operator/Grafana/K8s) 3. Tests run in the existing CI pipeline (`.github/workflows/ci.yml`) alongside lint and pytest 4. Tests follow the repository pattern: GitHub Actions, no external test tools beyond Helm CLI | 1. New toggle added → test matrix must be updated to cover the new dimension 2. Subchart version not available → `helm dependency update` fails early with clear error |
+| F08 | Chart tests | As a developer, I want automated tests for the Helm chart so that all toggle combinations and edge cases are validated in CI before publishing | 1. `helm lint` runs on every PR and before publish 2. `helm template` validates all 32 toggle combinations (2^5: OTel/Operator/Grafana/K8s/kubePrometheusStack) 3. Tests run in the existing CI pipeline (`.github/workflows/ci.yml`) alongside lint and pytest 4. Tests follow the repository pattern: GitHub Actions, no external test tools beyond Helm CLI | 1. New toggle added → test matrix must be updated to cover the new dimension 2. Subchart version not available → `helm dependency update` fails early with clear error |
+| F10 | kube-prometheus-stack subchart | As an operator, I want to optionally deploy a full monitoring stack (Prometheus + Grafana + Alertmanager) alongside Octantis so that I have a self-contained observability setup | 1. Disabled by default (`kubePrometheusStack.enabled: false`) 2. Uses official `kube-prometheus-stack` Helm chart as dependency 3. When enabled alongside `grafanaMcp`, the Grafana MCP auto-wires to the in-chart Grafana instance (custom URL takes precedence) 4. When enabled alongside `otelCollector` + `otelOperator`, the OTel Collector CR includes a Prometheus receiver scraping the in-chart Prometheus 5. All subchart values pass through via `kubePrometheusStack.*` | 1. Operator already has Prometheus Operator CRDs → may conflict, should leave disabled 2. Custom `grafanaMcp.grafanaUrl` set → takes precedence over auto-wired kps Grafana |
 | F09 | Chart documentation | As a user, I want documentation for the Helm chart that follows the same structure and patterns as the rest of the Octantis docs | 1. Chart README (`charts/octantis/README.md`) with configuration table, example values, and quickstart 2. `.github/ONBOARDING.md` updated with Helm install as the recommended K8s deployment method 3. `.github/OVERVIEW.md` updated to reference the chart in the deployment section 4. Example values files in `charts/octantis/examples/`: `values-minimal.yaml`, `values-full-stack.yaml`, `values-external-mcp.yaml` 5. Documentation follows existing patterns: dark-mode Mermaid diagrams, List of Contents, file citations | 1. Chart values change but README not updated → CI should warn (or at least the launch checklist catches it) |
 
 ## 5. Acceptance Criteria
@@ -91,7 +92,7 @@ The chart is published to ghcr.io as an OCI artifact and listed on ArtifactHub f
 | Criterion | Baseline | Target | How to Verify |
 |-----------|----------|--------|---------------|
 | Octantis-only install | Manual manifests, multi-hour setup | `helm install octantis oci://ghcr.io/.../octantis` deploys a running Octantis pod | `helm install` → `kubectl get pods` → Running |
-| Full stack install | Manual assembly of 4+ components | Single `helm install` with values enables Octantis + OTel + Grafana MCP + K8s MCP | `helm install -f full-stack.yaml` → all pods Running, Octantis logs show MCP connections |
+| Full stack install | Manual assembly of 4+ components | Single `helm install` with values enables Octantis + OTel + Grafana MCP + K8s MCP + kube-prometheus-stack | `helm install -f full-stack.yaml` → all pods Running, Octantis logs show MCP connections |
 | Chart on ArtifactHub | Not listed | Searchable on artifacthub.io | Search "octantis" on ArtifactHub → chart appears |
 | Secrets via ExternalSecrets | Not supported | `existingSecret` references work for all sensitive values | Set `existingSecret`, verify pod starts with correct env vars from external secret |
 | Toggle any component off | Not possible (manual deployment) | Any component can be disabled without affecting others | `helm install` with only `grafanaMcp.enabled: true` → only Octantis + Grafana MCP deployed |
@@ -100,7 +101,7 @@ The chart is published to ghcr.io as an OCI artifact and listed on ArtifactHub f
 
 | Criterion | How to Verify |
 |-----------|---------------|
-| `helm template` renders without errors for all toggle combinations | Script tests all 2^4 combinations (16 total) of OTel/Operator/Grafana/K8s toggles |
+| `helm template` renders without errors for all toggle combinations | Script tests all 2^5 combinations (32 total) of OTel/Operator/Grafana/K8s/kubePrometheusStack toggles |
 | `helm lint` passes | `helm lint charts/octantis/` returns 0 |
 | Values schema validates input | `values.schema.json` rejects invalid values (e.g., `otelCollector.enabled: "yes"` instead of `true`) |
 | No hardcoded image tags | All image tags come from `values.yaml`, overridable |
@@ -111,9 +112,9 @@ The chart is published to ghcr.io as an OCI artifact and listed on ArtifactHub f
 | Milestone | Objective | Features | Deliverables | Done When | Approver |
 |-----------|----------|----------|-------------|-----------|----------|
 | M1: Core Chart | Octantis deploys via Helm with configurable values and secrets | F01, F06 | 1. `charts/octantis/` directory with Chart.yaml, values.yaml, templates/ 2. Octantis Deployment, Service, ConfigMap, ServiceAccount templates 3. Secrets support (create + existingSecret) 4. NOTES.txt with post-install instructions 5. values.schema.json | `helm install octantis charts/octantis/` → Octantis pod Running with correct env vars | Vinicius Espindola |
-| M2: OTel Subcharts | OTel Collector and Operator available as toggleable subcharts | F02, F03 | 1. `opentelemetry-collector` added as conditional dependency 2. `opentelemetry-operator` added as conditional dependency 3. Default Collector config exporting to Octantis 4. OpenTelemetryCollector CR template (when operator enabled) | `helm install -f otel.yaml` → Collector + Octantis running, OTLP events flowing | Vinicius Espindola |
+| M2: OTel & Monitoring Subcharts | OTel Collector, Operator, and kube-prometheus-stack available as toggleable subcharts | F02, F03, F10 | 1. `opentelemetry-collector` added as conditional dependency 2. `opentelemetry-operator` added as conditional dependency 3. `kube-prometheus-stack` added as conditional dependency 4. Default Collector config exporting to Octantis 5. OpenTelemetryCollector CR template (when operator enabled) with Prometheus receiver auto-wired when kps enabled 6. Grafana MCP auto-wires to kps Grafana when both enabled | `helm install -f full-stack.yaml` → Collector + Prometheus + Grafana + Octantis running | Vinicius Espindola |
 | M3: MCP Templates | Grafana MCP and K8s MCP deployable from the chart | F04, F05 | 1. Grafana MCP Deployment + Service + config templates 2. K8s MCP Deployment + Service + ServiceAccount + RBAC templates 3. Auto-wiring of MCP URLs to Octantis env vars 4. Security hardening (--enabled-tools, read-only RBAC) | `helm install -f full.yaml` → all MCPs connected, Octantis logs show tools loaded | Vinicius Espindola |
-| M4: Tests & CI | Chart tests integrated into existing CI pipeline | F08 | 1. `helm lint` step added to `.github/workflows/ci.yml` 2. `helm template` matrix test for all 16 toggle combinations 3. Tests run on every PR alongside existing lint and pytest jobs | All 16 combinations pass `helm template`; `helm lint` passes with 0 warnings; CI green on PR | Vinicius Espindola |
+| M4: Tests & CI | Chart tests integrated into existing CI pipeline | F08 | 1. `helm lint` step added to `.github/workflows/ci.yml` 2. `helm template` matrix test for all 32 toggle combinations (2^5 with kubePrometheusStack) 3. Tests run on every PR alongside existing lint and pytest jobs | All 32 combinations pass `helm template`; `helm lint` passes with 0 warnings; CI green on PR | Vinicius Espindola |
 | M5: Documentation | Chart documentation follows repository patterns | F09 | 1. `charts/octantis/README.md` with configuration table, examples, and quickstart 2. `.github/ONBOARDING.md` updated with Helm install as recommended K8s method 3. `.github/OVERVIEW.md` references the chart 4. Example values files: `values-minimal.yaml`, `values-full-stack.yaml`, `values-external-mcp.yaml` | Docs follow existing patterns (Mermaid, List of Contents, file citations); onboarding references `helm install` | Vinicius Espindola |
 | M6: Publishing | Chart available on ghcr.io and ArtifactHub | F07 | 1. GitHub Actions workflow for chart packaging and OCI push 2. `artifacthub-repo.yml` in repo root 3. First tag `chart-v0.1.0` published | `helm pull oci://ghcr.io/.../octantis` works; chart appears on ArtifactHub | Vinicius Espindola |
 
@@ -126,6 +127,7 @@ The chart is published to ghcr.io as an OCI artifact and listed on ArtifactHub f
 | Octantis Docker image on ghcr.io | Internal | Available | Chart needs a published image to reference in `appVersion` |
 | opentelemetry-collector Helm chart | External | Available (official) | Subchart dependency for OTel Collector feature |
 | opentelemetry-operator Helm chart | External | Available (official) | Subchart dependency for OTel Operator feature |
+| kube-prometheus-stack Helm chart | External | Available (official) | Subchart dependency for monitoring stack (Prometheus + Grafana + Alertmanager) |
 | mcp-grafana Docker image | External | Available (official Grafana) | Required for Grafana MCP deployment template |
 | mcp-k8s Docker image | External | Available (community) | Required for K8s MCP deployment template |
 | ArtifactHub account/repo | External | Pending setup | M4 blocked until ArtifactHub repo is registered |
@@ -136,7 +138,8 @@ The chart is published to ghcr.io as an OCI artifact and listed on ArtifactHub f
 |------|--------|------------|
 | OTel subchart major version update breaks compatibility | Medium — chart install fails | Pin subchart versions in Chart.yaml. Test upgrades before bumping. |
 | MCP server images change their CLI flags or config format | Medium — MCP pods crash | Pin image tags in values.yaml defaults. Document supported versions. |
-| Combinatorial explosion of toggle states makes testing hard | Medium — untested combinations may break | Automate `helm template` for all 16 toggle combinations in CI. Focus manual testing on the 4-5 most common setups. |
+| Combinatorial explosion of toggle states makes testing hard | Medium — untested combinations may break | Automate `helm template` for all 32 toggle combinations (2^5) in CI. Focus manual testing on the 4-5 most common setups. |
+| kube-prometheus-stack CRD conflicts with existing Prometheus Operator | Medium — CRD version mismatch | Document that operators with existing Prometheus Operator should leave `kubePrometheusStack.enabled: false`. |
 | ghcr.io OCI support for Helm has edge cases with auth | Low — publishing fails | Use `helm push` with GitHub Actions OIDC auth. Fallback: publish as GitHub Release artifact. |
 | Users confuse chart version with Octantis app version | Low — wrong image deployed | Clear documentation in README. `appVersion` in Chart.yaml always matches the default image tag. |
 
@@ -148,6 +151,7 @@ The chart is published to ghcr.io as an OCI artifact and listed on ArtifactHub f
 - `.github/SECURITY.md` — MCP security hardening (--enabled-tools, RBAC)
 - `examples/kubernetes/` — Existing example manifests (to be superseded by the chart)
 - [OpenTelemetry Collector Helm Chart](https://github.com/open-telemetry/opentelemetry-helm-charts) — Subchart dependency
+- [kube-prometheus-stack Helm Chart](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack) — Subchart dependency for monitoring stack
 - [ArtifactHub documentation](https://artifacthub.io/docs/topics/repositories/) — Publishing requirements
 
 ## 10. Architecture Overview
@@ -162,18 +166,19 @@ The chart is published to ghcr.io as an OCI artifact and listed on ArtifactHub f
              │ (always) │  │(optional)│  │  (optional)  │
              └────┬─────┘  └────┬─────┘  └──────┬───────┘
                   │             │                │
-        ┌─────────┤        ┌────┤           ┌────┤
-        ▼         ▼        ▼    ▼           ▼    ▼
-   Deployment  Service   OTel  OTel      Grafana  K8s
-   ConfigMap   :4317     Coll  Operator  MCP      MCP
-   Secrets     :4318     ector           + RBAC   + RBAC
+        ┌─────────┤        ┌────┼────┐      ┌────┤
+        ▼         ▼        ▼    ▼    ▼      ▼    ▼
+   Deployment  Service   OTel  OTel  KPS  Grafana  K8s
+   ConfigMap   :4317     Coll  Oper        MCP      MCP
+   Secrets     :4318     ector ator        + RBAC   + RBAC
    SA + RBAC   :9090
 
 Toggle via values.yaml:
-  otelCollector.enabled: true/false
-  otelOperator.enabled:  true/false
-  grafanaMcp.enabled:    true/false
-  k8sMcp.enabled:        true/false
+  otelCollector.enabled:       true/false
+  otelOperator.enabled:        true/false
+  grafanaMcp.enabled:          true/false
+  k8sMcp.enabled:              true/false
+  kubePrometheusStack.enabled: true/false
 
 Secrets mode per component:
   secrets.anthropic.create: true     ← chart creates Secret
@@ -181,9 +186,10 @@ Secrets mode per component:
 ```
 
 - **Octantis** (always): Core Deployment + Service + ConfigMap + Secrets + ServiceAccount. All settings from `config.py` exposed as values.
-- **OTel Collector** (subchart, optional): Official `opentelemetry-collector` chart. Pre-configured to export OTLP to Octantis service.
+- **OTel Collector** (subchart, optional): Official `opentelemetry-collector` chart. Pre-configured to export OTLP to Octantis service. When kube-prometheus-stack is also enabled, the OTel Collector CR includes a Prometheus receiver for metrics scraping.
 - **OTel Operator** (subchart, optional): Official `opentelemetry-operator` chart. When both Operator and Collector are enabled, creates a CR instead of plain Deployment.
-- **Grafana MCP** (template, optional): Deployment + Service. Auto-wires `GRAFANA_MCP_URL` on Octantis. Security-hardened with `--enabled-tools=prometheus,loki`.
+- **kube-prometheus-stack** (subchart, optional): Official chart deploying Prometheus Operator, Prometheus, Grafana, and Alertmanager. Auto-wires Grafana URL for Grafana MCP and Prometheus scrape targets for OTel Collector.
+- **Grafana MCP** (template, optional): Deployment + Service. Auto-wires `GRAFANA_MCP_URL` on Octantis. When kube-prometheus-stack is enabled, auto-wires Grafana URL to in-chart Grafana (custom URL takes precedence). Security-hardened with `--enabled-tools=prometheus,loki`.
 - **K8s MCP** (template, optional): Deployment + Service + ServiceAccount + ClusterRole (read-only) + ClusterRoleBinding. Auto-wires `K8S_MCP_URL` on Octantis.
 - **Future**: Docker MCP and AWS MCP templates follow the same pattern when PRD 003 is implemented.
 
@@ -196,4 +202,5 @@ Secrets mode per component:
 | 2026-04-10 | Independent chart versioning | Chart changes (new toggle, template fix) don't require an Octantis release, and vice versa. `appVersion` tracks the default image tag for clarity. |
 | 2026-04-10 | Dual secrets support (create + existingSecret) | Some operators use ExternalSecrets/Sealed Secrets for compliance. Others want simplicity. Supporting both covers the spectrum without forcing a pattern. |
 | 2026-04-10 | All optional components disabled by default | Minimizes the default footprint. Operators opt-in to what they need. Prevents accidental deployment of components the operator doesn't want or isn't ready to configure. |
+| 2026-04-10 | kube-prometheus-stack as optional subchart | Provides a self-contained monitoring stack for operators who don't have existing Prometheus/Grafana. Auto-wires Grafana URL for Grafana MCP and Prometheus targets for OTel Collector. Disabled by default to avoid CRD conflicts with existing Prometheus Operator installations. |
 | 2026-04-10 | Publish to ghcr.io (OCI) + ArtifactHub | ghcr.io for native `helm pull oci://` experience (no separate repo server). ArtifactHub for discoverability — it's where the Helm ecosystem searches for charts. |

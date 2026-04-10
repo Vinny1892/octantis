@@ -245,3 +245,13 @@ otelOperator:
 
 otelCollectorCR:
   mode: deployment
+
+kubePrometheusStack:
+  enabled: false
+  grafana:
+    enabled: true
+    adminPassword: ""
+  prometheus:
+    enabled: true
+  alertmanager:
+    enabled: true

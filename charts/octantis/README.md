@@ -49,10 +49,16 @@ graph LR
         OP["OTel Operator<br/>subchart"]
     end
 
+    subgraph "kubePrometheusStack.enabled"
+        KPS["kube-prometheus-stack<br/>Prometheus + Grafana<br/>+ Alertmanager"]
+    end
+
     GMCP -.->|auto-wires<br/>GRAFANA_MCP_URL| OCT
     KMCP -.->|auto-wires<br/>K8S_MCP_URL| OCT
     OTEL -.->|exports OTLP to| OCT
     OP -.->|manages| OTEL
+    KPS -.->|Grafana URL<br/>for Grafana MCP| GMCP
+    KPS -.->|Prometheus scrape<br/>targets| OTEL
 ```
 
 ### Components
@@ -64,6 +70,7 @@ graph LR
 | K8s MCP | In-chart | `k8sMcp.enabled` | Kubernetes API queries via MCP |
 | OTel Collector | Subchart | `otelCollector.enabled` | Receives telemetry, exports to Octantis |
 | OTel Operator | Subchart | `otelOperator.enabled` | Manages OpenTelemetryCollector CRs |
+| kube-prometheus-stack | Subchart | `kubePrometheusStack.enabled` | Prometheus Operator + Grafana + Alertmanager |
 
 ## Configuration
 
@@ -156,6 +163,18 @@ graph LR
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `otelCollectorCR.mode` | CR mode (when both Operator + Collector enabled) | `deployment` |
+
+### kube-prometheus-stack
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `kubePrometheusStack.enabled` | Deploy kube-prometheus-stack (Prometheus Operator + Grafana + Alertmanager) | `false` |
+| `kubePrometheusStack.grafana.enabled` | Deploy Grafana with the stack | `true` |
+| `kubePrometheusStack.grafana.adminPassword` | Grafana admin password | `""` |
+| `kubePrometheusStack.prometheus.enabled` | Deploy Prometheus with the stack | `true` |
+| `kubePrometheusStack.alertmanager.enabled` | Deploy Alertmanager with the stack | `true` |
+
+When `kubePrometheusStack.enabled: true` and `grafanaMcp.enabled: true`, the Grafana MCP automatically uses the in-chart Grafana instance. When combined with `otelCollector.enabled: true`, the OTel Collector is pre-configured with a Prometheus receiver for metrics scraping.
 
 ## Secrets Management
 

@@ -227,11 +227,36 @@
     "otelOperator": {
       "type": "object",
       "properties": {
+        "enabled": { "type": "boolean" }
+      }
+    },
+    "otelCollectorCR": {
+      "type": "object",
+      "properties": {
+        "mode": { "type": "string", "enum": ["deployment", "daemonset", "sidecar"] }
+      }
+    },
+    "kubePrometheusStack": {
+      "type": "object",
+      "properties": {
         "enabled": { "type": "boolean" },
-        "collector": {
+        "grafana": {
           "type": "object",
           "properties": {
-            "mode": { "type": "string", "enum": ["deployment", "daemonset", "sidecar"] }
+            "enabled": { "type": "boolean" },
+            "adminPassword": { "type": "string" }
+          }
+        },
+        "prometheus": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" }
+          }
+        },
+        "alertmanager": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" }
           }
         }
       }

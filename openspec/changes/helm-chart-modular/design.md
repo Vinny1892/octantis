@@ -7,10 +7,10 @@ Secret management is a critical concern: operators use different strategies rang
 ## Goals / Non-Goals
 
 **Goals:**
-- Single `helm install` deploys any combination of Octantis + OTel + MCPs
+- Single `helm install` deploys any combination of Octantis + OTel + MCPs + kube-prometheus-stack
 - Values API grouped by feature domain, matching `config.py` structure
-- Dual secrets: native Kubernetes Secret creation (`create: true`) and External Secrets Operator (`externalsecret` references)
-- All 16 toggle combinations render without errors via `helm template`
+- Three-mode secrets: native Kubernetes Secret creation, External Secrets Operator CR, and existing Secret references
+- All toggle combinations render without errors via `helm template`
 - Chart published as OCI artifact to ghcr.io on tag push
 - Chart discoverable on ArtifactHub
 
@@ -18,7 +18,6 @@ Secret management is a critical concern: operators use different strategies rang
 - Helm chart testing framework (ct, helm-unittest) — deferred to future iteration
 - Docker Compose deployment
 - Ingress / Gateway API resources
-- Monitoring stack (Prometheus, Loki, Grafana) deployment
 - Docker MCP / AWS MCP templates (deferred to PRD 003 implementation)
 
 ## Decisions
@@ -73,11 +72,25 @@ Pushing `chart-v*` tag triggers: lint → template matrix → package → OCI pu
 
 **Trade-off**: Manual tag creation. Acceptable — git-cliff can automate this.
 
+### Decision 7: kube-prometheus-stack as conditional subchart
+
+Add `kube-prometheus-stack` as a conditional dependency (`kubePrometheusStack.enabled`). When enabled alongside OTel Collector, the Collector is pre-configured with scrape targets from the Prometheus Operator `ServiceMonitors` and `PodMonitors` created by the stack. The Grafana instance from the stack is auto-wired as the Grafana MCP datasource URL.
+
+**Alternatives:**
+
+| Option | Pros | Cons | Verdict |
+|--------|------|------|---------|
+| Subchart (official) | Well-maintained, full monitoring stack, CRDs managed | Heavy dependency, many CRDs | **Chosen** |
+| Separate install | Decoupled, no CRD pollution | Operator manages two Helm releases | Rejected — defeats single-install goal |
+
+**Trade-off**: kube-prometheus-stack installs CRDs (PrometheusRule, ServiceMonitor, etc.) and is a large chart. Mitigated by being disabled by default and clearly documented as optional.
+
 ## Risks / Trade-offs
 
 - **OTel subchart major version breaks compatibility** → Pin versions with `~` in Chart.yaml. Test upgrades before bumping.
 - **MCP server images change CLI flags** → Pin image tags in values.yaml defaults. Document supported versions.
 - **Three-mode secrets complexity** → `values.schema.json` validates input. Clear priority rules prevent ambiguous states.
-- **Combinatorial explosion of toggle states** → Automate `helm template` for all 16 combinations in CI. Focus manual testing on 4-5 common setups.
+- **Combinatorial explosion of toggle states** → Automate `helm template` for all 32 combinations (2^5) in CI. Focus manual testing on common setups.
 - **External Secrets Operator not installed** → `externalsecret` values are opt-in. Chart works without ESO installed. NOTES.txt warns if ESO is enabled but CRDs are missing.
 - **Users confuse chart version with app version** → Clear docs. `appVersion` in Chart.yaml always matches default image tag.
+- **kube-prometheus-stack CRD conflicts** → If the cluster already has Prometheus Operator CRDs, the subchart may conflict. Document that operators with existing Prometheus Operator should leave this disabled.

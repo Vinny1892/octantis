@@ -12,16 +12,16 @@ The CI pipeline SHALL run `helm lint charts/octantis/` on every PR that modifies
 - **THEN** the helm lint job MAY still run but SHALL NOT be a required check
 
 ### Requirement: Template matrix test for all toggle combinations
-The CI SHALL run `helm template` for all 16 toggle combinations (2^4: otelCollector, otelOperator, grafanaMcp, k8sMcp) on every PR that modifies files under `charts/`.
+The CI SHALL run `helm template` for all 32 toggle combinations (2^5: otelCollector, otelOperator, grafanaMcp, k8sMcp, kubePrometheusStack) on every PR that modifies files under `charts/`.
 
-#### Scenario: All 16 combinations render
+#### Scenario: All 32 combinations render
 - **WHEN** a PR modifies files under `charts/`
-- **THEN** the CI SHALL test all 16 toggle combinations via `helm template`
+- **THEN** the CI SHALL test all 32 toggle combinations via `helm template`
 - **AND** SHALL fail if any combination produces a rendering error
 
 #### Scenario: Toggle combination includes all dimensions
 - **WHEN** the template matrix runs
-- **THEN** it SHALL cover: otelCollector=true/false, otelOperator=true/false, grafanaMcp=true/false, k8sMcp=true/false
+- **THEN** it SHALL cover: otelCollector=true/false, otelOperator=true/false, grafanaMcp=true/false, k8sMcp=true/false, kubePrometheusStack=true/false
 
 ### Requirement: Helm CI job runs in existing workflow
 The helm validation SHALL run as a job in the existing `.github/workflows/ci.yml`, in parallel with existing lint and test jobs.
@@ -35,7 +35,7 @@ Pushing a `chart-v*` git tag SHALL trigger a GitHub Actions workflow that lints,
 
 #### Scenario: Tag push triggers publish workflow
 - **WHEN** a tag matching `chart-v*` is pushed
-- **THEN** the workflow SHALL run `helm lint`, `helm template` for all 16 combinations, `helm package`, `helm push` to ghcr.io, and create a GitHub Release
+- **THEN** the workflow SHALL run `helm lint`, `helm template` for all 32 combinations, `helm package`, `helm push` to ghcr.io, and create a GitHub Release
 
 #### Scenario: Duplicate version rejected
 - **WHEN** the chart version already exists on ghcr.io
@@ -66,9 +66,5 @@ The repo SHALL include `artifacthub-repo.yml` at the root. Chart.yaml SHALL incl
 - **WHEN** `Chart.yaml` is read
 - **THEN** it SHALL include `annotations.artifacthub.io/license` and `annotations.artifacthub.io/changes`
 
-### Requirement: Helm dependency update in CI
-All CI steps SHALL run `helm dependency update charts/octantis/` before lint or template to ensure subchart dependencies are resolved.
-
-#### Scenario: Dependency update runs before lint
-- **WHEN** the helm CI job runs
-- **THEN** `helm dependency update` SHALL run before `helm lint`
+### Requirement: Subchart tgz committed
+Subchart archives SHALL be committed to the repository. CI SHALL NOT run `helm dependency update` to avoid upstream schema bugs.

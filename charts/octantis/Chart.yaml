@@ -27,3 +27,9 @@ dependencies:
     repository: https://open-telemetry.github.io/opentelemetry-helm-charts
     condition: otelOperator.enabled
     alias: otelOperator
+
+  - name: kube-prometheus-stack
+    version: "83.4.0"
+    repository: https://prometheus-community.github.io/helm-charts
+    condition: kubePrometheusStack.enabled
+    alias: kubePrometheusStack

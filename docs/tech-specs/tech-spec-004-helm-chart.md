@@ -1,12 +1,12 @@
 ---
 spec_number: "004"
 prd_ref: "004"
-summary: "Modular Helm chart with grouped values API, conditional OTel subcharts, in-chart MCP templates, dual secrets support, and tag-based OCI publishing via git-cliff"
+summary: "Modular Helm chart with grouped values API, conditional OTel and kube-prometheus-stack subcharts, in-chart MCP templates, dual secrets support, and tag-based OCI publishing via git-cliff"
 priority: media
 created: 2026-04-10
 updated: 2026-04-10
 owner: Vinicius Espindola
-tags: [helm, kubernetes, deployment, distribution, otel, mcp, ci-cd]
+tags: [helm, kubernetes, deployment, distribution, otel, mcp, ci-cd, prometheus, monitoring]
 target_date: ""
 issue: ""
 depends_on: ["001", "002"]
@@ -14,6 +14,7 @@ references:
   - "PRD 004: docs/prds/prd-004-helm-chart.md"
   - "OpenTelemetry Collector Helm Chart: https://github.com/open-telemetry/opentelemetry-helm-charts"
   - "OpenTelemetry Operator Helm Chart: https://github.com/open-telemetry/opentelemetry-helm-charts/tree/main/charts/opentelemetry-operator"
+  - "kube-prometheus-stack Helm Chart: https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack"
   - "git-cliff: https://github.com/orhun/git-cliff"
   - "Helm OCI support: https://helm.sh/docs/topics/registries/"
   - "ArtifactHub: https://artifacthub.io/docs/topics/repositories/"
@@ -64,9 +65,9 @@ Kubernetes packaging / deployment tooling — this is a Helm chart, not a runnin
 
 ### Goals
 
-- Single `helm install` deploys any combination of Octantis + OTel + MCPs
+- Single `helm install` deploys any combination of Octantis + OTel + MCPs + kube-prometheus-stack
 - Values API grouped by feature domain, matching `config.py` structure
-- All 16 toggle combinations render without errors via `helm template`
+- All 32 toggle combinations (2^5) render without errors via `helm template`
 - Chart published as OCI artifact to ghcr.io on tag push
 - Chart discoverable on ArtifactHub
 
@@ -75,7 +76,7 @@ Kubernetes packaging / deployment tooling — this is a Helm chart, not a runnin
 - Helm chart testing framework (ct, helm-unittest) — deferred to future iteration
 - Docker Compose deployment
 - Ingress / Gateway API resources
-- Monitoring stack (Prometheus, Loki, Grafana) deployment
+- Loki deployment (Prometheus and Grafana are available via optional kube-prometheus-stack subchart)
 - Docker MCP / AWS MCP templates (deferred to PRD 003 implementation)
 
 ### Success Criteria
@@ -83,7 +84,7 @@ Kubernetes packaging / deployment tooling — this is a Helm chart, not a runnin
 | Criterion | Baseline | Target | Verification |
 |-----------|----------|--------|-------------|
 | Install time for full stack | 30+ min manual | < 2 min `helm install` | Time from `helm install` to all pods Running |
-| Toggle combinations valid | N/A | 16/16 pass `helm template` | CI script tests all combinations |
+| Toggle combinations valid | N/A | 32/32 pass `helm template` | CI script tests all combinations (2^5 toggles) |
 | Chart on ghcr.io | Not published | `helm pull oci://ghcr.io/vinny1892/charts/octantis` works | Manual test after first tag push |
 | ArtifactHub listing | Not listed | Searchable on artifacthub.io | Search "octantis" on ArtifactHub |
 
@@ -124,7 +125,8 @@ charts/octantis/
 │
 ├── charts/                             # subchart tarballs (helm dep update)
 │   ├── opentelemetry-collector-*.tgz   #   condition: otelCollector.enabled
-│   └── opentelemetry-operator-*.tgz    #   condition: otelOperator.enabled
+│   ├── opentelemetry-operator-*.tgz    #   condition: otelOperator.enabled
+│   └── kube-prometheus-stack-*.tgz     #   condition: kubePrometheusStack.enabled
 │
 └── examples/
     ├── values-minimal.yaml             # octantis only
@@ -156,10 +158,16 @@ graph LR
         OP["OTel Operator<br/>(subchart)"]
     end
 
+    subgraph "kubePrometheusStack.enabled"
+        KPS["kube-prometheus-stack<br/>Prometheus + Grafana<br/>+ Alertmanager"]
+    end
+
     GMCP -.->|auto-wires<br/>GRAFANA_MCP_URL| OCT
     KMCP -.->|auto-wires<br/>K8S_MCP_URL| OCT
     OTEL -.->|exports OTLP to| OCT
     OP -.->|manages| OTEL
+    KPS -.->|Grafana URL<br/>for Grafana MCP| GMCP
+    KPS -.->|Prometheus scrape<br/>targets| OTEL
 ```
 
 ### Components
@@ -171,6 +179,7 @@ graph LR
 | K8s MCP | In-chart templates | `k8sMcp.enabled` | `templates/k8s-mcp/` |
 | OTel Collector | Subchart | `otelCollector.enabled` | `opentelemetry-collector` dependency |
 | OTel Operator | Subchart | `otelOperator.enabled` | `opentelemetry-operator` dependency |
+| kube-prometheus-stack | Subchart | `kubePrometheusStack.enabled` | `kube-prometheus-stack` dependency |
 | OTel Collector CR | In-chart template | `otelOperator.enabled && otelCollector.enabled` | `templates/otel/` |
 
 ### Data Flow (Auto-Wiring)
@@ -381,6 +390,19 @@ otelOperator:
   # an OpenTelemetryCollector CR is created instead of a plain Deployment.
   collector:
     mode: deployment  # deployment, daemonset, sidecar
+
+# -- kube-prometheus-stack (subchart)
+kubePrometheusStack:
+  enabled: false
+  # -- All values under this key are passed to the kube-prometheus-stack subchart
+  # See: https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack
+  grafana:
+    enabled: true
+    adminPassword: ""
+  prometheus:
+    enabled: true
+  alertmanager:
+    enabled: true
 ```
 
 ## 4. Technical Decisions
@@ -465,7 +487,7 @@ Priority: in-chart component > external URL > not set.
 
 ### Decision 6: Conditional Subchart Dependencies
 
-**Context:** OTel Collector and Operator subcharts install CRDs and controllers. They shouldn't be installed unless explicitly enabled.
+**Context:** OTel Collector, Operator, and kube-prometheus-stack subcharts install CRDs and controllers. They shouldn't be installed unless explicitly enabled.
 
 **Decision:** Use Helm conditional dependencies in `Chart.yaml`:
 
@@ -479,6 +501,10 @@ dependencies:
     version: "~0.x.x"
     repository: https://open-telemetry.github.io/opentelemetry-helm-charts
     condition: otelOperator.enabled
+  - name: kube-prometheus-stack
+    version: "83.4.0"
+    repository: https://prometheus-community.github.io/helm-charts
+    condition: kubePrometheusStack.enabled
 ```
 
 When `condition` is false, the subchart is not rendered at all — no CRDs, no RBAC, no pods.
@@ -496,10 +522,11 @@ AND MUST NOT deploy any MCP or OTel components
 AND NOTES.txt MUST warn that no MCP is configured
 
 #### Scenario: Full stack install
-WHEN an operator runs `helm install` with `grafanaMcp.enabled: true`, `k8sMcp.enabled: true`, `otelCollector.enabled: true`
-THEN the chart MUST deploy Octantis + Grafana MCP + K8s MCP + OTel Collector
+WHEN an operator runs `helm install` with `grafanaMcp.enabled: true`, `k8sMcp.enabled: true`, `otelCollector.enabled: true`, `kubePrometheusStack.enabled: true`
+THEN the chart MUST deploy Octantis + Grafana MCP + K8s MCP + OTel Collector + kube-prometheus-stack
 AND MUST auto-wire `GRAFANA_MCP_URL` and `K8S_MCP_URL` in Octantis ConfigMap
 AND OTel Collector MUST be pre-configured to export to Octantis OTLP service
+AND Grafana MCP MUST auto-wire to the in-chart Grafana from kube-prometheus-stack
 
 #### Scenario: OTel Operator + Collector
 WHEN `otelOperator.enabled: true` and `otelCollector.enabled: true`
@@ -523,6 +550,22 @@ THEN the chart MUST NOT create a Secret for the Anthropic API key
 AND the Octantis Deployment MUST reference `my-external-secret` via `secretKeyRef`
 AND the key name MUST be configurable via `secrets.anthropicApiKey.key`
 
+#### Scenario: kube-prometheus-stack auto-wires Grafana MCP
+WHEN `kubePrometheusStack.enabled: true` and `grafanaMcp.enabled: true`
+THEN the Grafana MCP Deployment MUST set `GRAFANA_URL` to the in-chart Grafana service (`http://{{ release }}-grafana:3000`)
+
+#### Scenario: Custom Grafana URL takes precedence over kube-prometheus-stack
+WHEN `kubePrometheusStack.enabled: true` and `grafanaMcp.enabled: true` and `grafanaMcp.grafanaUrl: "http://custom:3000"`
+THEN the Grafana MCP Deployment MUST use the custom URL
+
+#### Scenario: kube-prometheus-stack auto-wires OTel Collector Prometheus receiver
+WHEN `kubePrometheusStack.enabled: true` and `otelOperator.enabled: true` and `otelCollector.enabled: true`
+THEN the OpenTelemetryCollector CR MUST include a Prometheus receiver scraping `{{ release }}-prometheus:9090`
+
+#### Scenario: kube-prometheus-stack disabled does not affect OTel Collector
+WHEN `kubePrometheusStack.enabled: false` and `otelOperator.enabled: true` and `otelCollector.enabled: true`
+THEN the OpenTelemetryCollector CR MUST NOT include a Prometheus receiver
+
 #### Scenario: External MCP URL
 WHEN `grafanaMcp.enabled: false` and `octantis.externalMcp.grafanaUrl: "http://my-mcp:8080/sse"`
 THEN the Octantis ConfigMap MUST include `GRAFANA_MCP_URL: "http://my-mcp:8080/sse"`
@@ -534,7 +577,7 @@ AND MUST NOT use the external URL
 
 #### Scenario: Chart publishing
 WHEN a `chart-v*` tag is pushed to the repository
-THEN the CI MUST run `helm lint` and `helm template` for all 16 toggle combinations
+THEN the CI MUST run `helm lint` and `helm template` for all 32 toggle combinations (2^5)
 AND MUST package and push the chart to `ghcr.io/vinny1892/charts/octantis`
 AND MUST generate a changelog via git-cliff scoped to `charts/` changes
 AND MUST create a GitHub Release with the changelog and chart artifact attached
@@ -551,7 +594,7 @@ AND MUST fail the PR if lint reports any warnings or errors
 
 #### Scenario: All toggle combinations render
 WHEN a PR modifies files under `charts/`
-THEN the CI MUST run `helm template` for all 16 combinations (2^4: otelCollector, otelOperator, grafanaMcp, k8sMcp)
+THEN the CI MUST run `helm template` for all 32 combinations (2^5: otelCollector, otelOperator, grafanaMcp, k8sMcp, kubePrometheusStack)
 AND MUST fail the PR if any combination produces a rendering error
 
 #### Scenario: Chart tests run alongside existing tests
@@ -566,7 +609,7 @@ AND MUST follow the same CI patterns (GitHub Actions, `ubuntu-latest`, no extern
 | **Render time** | `helm template` for full stack | < 5s | Time command locally |
 | **Chart size** | Packaged `.tgz` (without subcharts) | < 50KB | `ls -la` on packaged chart |
 | **Lint** | `helm lint` passes | 0 warnings, 0 errors | CI output |
-| **Toggle coverage** | All combinations render | 16/16 pass | CI matrix test |
+| **Toggle coverage** | All combinations render | 32/32 pass | CI matrix test |
 | **Publish latency** | Tag push → chart available on ghcr.io | < 5 min | GitHub Actions run time |
 
 ### Error Handling
@@ -665,6 +708,9 @@ octantis/
 │       │   └── otel/
 │       │       └── opentelemetrycollector-cr.yaml
 │       └── charts/           # subchart tarballs (generated by helm dep update)
+│           ├── opentelemetry-collector-*.tgz
+│           ├── opentelemetry-operator-*.tgz
+│           └── kube-prometheus-stack-*.tgz
 ├── .github/
 │   └── workflows/
 │       └── helm-publish.yml
@@ -683,7 +729,7 @@ flowchart LR
     PR["PR / Push to master"] --> LINT_PY["ruff check<br/>(existing)"]
     PR --> TEST_PY["pytest<br/>(existing)"]
     PR --> LINT_HELM["helm lint<br/>(new)"]
-    PR --> TPL["helm template<br/>16 combinations<br/>(new)"]
+    PR --> TPL["helm template<br/>32 combinations<br/>(new)"]
 ```
 
 New `helm` job added to the existing `ci.yml` workflow, runs in parallel with `lint` and `test` jobs:
@@ -703,11 +749,14 @@ New `helm` job added to the existing `ci.yml` workflow, runs in parallel with `l
             for operator in true false; do
               for grafana in true false; do
                 for k8s in true false; do
-                  helm template octantis charts/octantis/ \
-                    --set otelCollector.enabled=$otel \
-                    --set otelOperator.enabled=$operator \
-                    --set grafanaMcp.enabled=$grafana \
-                    --set k8sMcp.enabled=$k8s > /dev/null
+                  for kps in true false; do
+                    helm template octantis charts/octantis/ \
+                      --set otelCollector.enabled=$otel \
+                      --set otelOperator.enabled=$operator \
+                      --set grafanaMcp.enabled=$grafana \
+                      --set k8sMcp.enabled=$k8s \
+                      --set kubePrometheusStack.enabled=$kps > /dev/null
+                  done
                 done
               done
             done
@@ -719,7 +768,7 @@ New `helm` job added to the existing `ci.yml` workflow, runs in parallel with `l
 ```mermaid
 flowchart LR
     TAG["Push tag<br/>chart-v1.0.0"] --> LINT["helm lint"]
-    LINT --> TEMPLATE["helm template<br/>(16 combinations)"]
+    LINT --> TEMPLATE["helm template<br/>(32 combinations)"]
     TEMPLATE --> PACKAGE["helm package"]
     PACKAGE --> PUSH["helm push<br/>ghcr.io OCI"]
     PACKAGE --> CLIFF["git-cliff<br/>changelog"]
@@ -762,12 +811,15 @@ jobs:
             for operator in true false; do
               for grafana in true false; do
                 for k8s in true false; do
-                  echo "Testing: otel=$otel operator=$operator grafana=$grafana k8s=$k8s"
-                  helm template octantis charts/octantis/ \
-                    --set otelCollector.enabled=$otel \
-                    --set otelOperator.enabled=$operator \
-                    --set grafanaMcp.enabled=$grafana \
-                    --set k8sMcp.enabled=$k8s > /dev/null
+                  for kps in true false; do
+                    echo "Testing: otel=$otel operator=$operator grafana=$grafana k8s=$k8s kps=$kps"
+                    helm template octantis charts/octantis/ \
+                      --set otelCollector.enabled=$otel \
+                      --set otelOperator.enabled=$operator \
+                      --set grafanaMcp.enabled=$grafana \
+                      --set k8sMcp.enabled=$k8s \
+                      --set kubePrometheusStack.enabled=$kps > /dev/null
+                  done
                 done
               done
             done
@@ -880,9 +932,9 @@ The chart itself has zero infrastructure cost. Deployed components' costs are co
 | Phase | What | Validation | Rollback |
 |-------|------|-----------|----------|
 | 1 — Core Chart | `charts/octantis/` with Octantis templates + secrets | `helm template`, `helm lint`, `helm install --dry-run` | Delete chart directory |
-| 2 — OTel Subcharts | Add conditional subchart dependencies | `helm dependency update` + `helm template` with OTel toggles | Remove dependencies from Chart.yaml |
+| 2 — OTel & Monitoring Subcharts | Add conditional subchart dependencies (OTel + kube-prometheus-stack) | `helm dependency update` + `helm template` with OTel and kps toggles | Remove dependencies from Chart.yaml |
 | 3 — MCP Templates | Add Grafana MCP + K8s MCP templates | `helm template` with MCP toggles, verify auto-wired URLs | Remove MCP template directories |
-| 4 — Tests & CI | `helm lint` + 16-combo `helm template` matrix in `.github/workflows/ci.yml` | CI green on PR with chart changes | Remove helm jobs from CI workflow |
+| 4 — Tests & CI | `helm lint` + 32-combo `helm template` matrix in `.github/workflows/ci.yml` | CI green on PR with chart changes | Remove helm jobs from CI workflow |
 | 5 — Documentation | Chart README, example values, update `.github/ONBOARDING.md` and `.github/OVERVIEW.md` | Docs follow repo patterns (Mermaid, List of Contents, file citations); onboarding references `helm install` | `git revert` |
 | 6 — Publishing | GitHub Actions workflow for OCI push + git-cliff release, ArtifactHub registration | Push `chart-v0.1.0` tag, verify ghcr.io + ArtifactHub | Delete workflow file |
 
@@ -911,11 +963,13 @@ helm install octantis oci://ghcr.io/vinny1892/charts/octantis --version 1.0.0
 - [ ] K8s MCP templates: Deployment, Service, ServiceAccount, ClusterRole, ClusterRoleBinding (conditional)
 - [ ] OTel Collector CR template (conditional on both Operator and Collector)
 - [ ] Auto-wiring logic tested: enable MCP → URL appears in ConfigMap
-- [ ] All 16 toggle combinations pass `helm template`
+- [ ] kube-prometheus-stack + grafanaMcp auto-wires Grafana URL (custom URL takes precedence)
+- [ ] kube-prometheus-stack + otelCollector + otelOperator configures Prometheus receiver in CR
+- [ ] All 32 toggle combinations (2^5 with kubePrometheusStack) pass `helm template`
 - [ ] `helm lint` passes with 0 warnings
 - [ ] NOTES.txt provides useful post-install guidance
 - [ ] **Tests**: `helm lint` job added to `.github/workflows/ci.yml`
-- [ ] **Tests**: 16-combination `helm template` matrix job added to CI
+- [ ] **Tests**: 32-combination `helm template` matrix job added to CI (2^5 with kubePrometheusStack)
 - [ ] **Tests**: CI green on PR that touches `charts/`
 - [ ] **Docs**: `charts/octantis/README.md` with configuration table, examples, and quickstart
 - [ ] **Docs**: `.github/ONBOARDING.md` updated — Helm install as recommended K8s deployment method
@@ -946,4 +1000,5 @@ helm install octantis oci://ghcr.io/vinny1892/charts/octantis --version 1.0.0
 | 2026-04-10 | Auto-wiring MCP URLs in ConfigMap template | Eliminates manual URL configuration when MCPs are deployed by the chart. In-chart component takes precedence over external URL. |
 | 2026-04-10 | Tag `chart-v*` triggers CI → ghcr.io + GitHub Release via git-cliff | Integrates with planned tag-based release system. Explicit control over when charts are published. |
 | 2026-04-10 | All components in release namespace | Simplifies templates and RBAC. ClusterRole/ClusterRoleBinding are cluster-scoped by nature. Operators who need namespace isolation deploy MCPs outside the chart. |
-| 2026-04-10 | Conditional subchart dependencies | OTel subcharts install CRDs and controllers. `condition:` in Chart.yaml ensures nothing is rendered when disabled. |
+| 2026-04-10 | Conditional subchart dependencies | OTel and kube-prometheus-stack subcharts install CRDs and controllers. `condition:` in Chart.yaml ensures nothing is rendered when disabled. |
+| 2026-04-10 | kube-prometheus-stack as optional subchart | Provides self-contained monitoring (Prometheus + Grafana + Alertmanager). Auto-wires Grafana URL for Grafana MCP (custom URL takes precedence) and Prometheus scrape targets for OTel Collector CR. Disabled by default to avoid CRD conflicts. |

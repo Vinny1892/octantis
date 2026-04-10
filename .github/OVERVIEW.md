@@ -90,6 +90,7 @@ flowchart TD
 | **Metrics** | 9 Prometheus metrics on `:9090/metrics` | `metrics.py` |
 | **Notifiers** | Formats and sends Slack Block Kit / Discord Embeds | `notifiers/` |
 | **Helm Chart** | Modular Kubernetes deployment with toggleable components | `charts/octantis/` |
+| **kube-prometheus-stack** | Optional monitoring stack (Prometheus + Grafana + Alertmanager) via subchart | `charts/octantis/` |
 | **Config** | All configuration via env vars | `config.py` |
 
 ## Directory Structure

@@ -139,3 +139,16 @@ ServiceAccount name for K8s MCP.
 {{- default "default" .Values.k8sMcp.serviceAccount.name }}
 {{- end }}
 {{- end }}
+
+{{/*
+Grafana URL for Grafana MCP: custom URL takes precedence, then kube-prometheus-stack auto-wire, then default.
+*/}}
+{{- define "octantis.grafanaMcpGrafanaUrl" -}}
+{{- if and (ne .Values.grafanaMcp.grafanaUrl "http://grafana.monitoring.svc.cluster.local:3000") (ne .Values.grafanaMcp.grafanaUrl "") -}}
+{{- .Values.grafanaMcp.grafanaUrl -}}
+{{- else if and .Values.kubePrometheusStack.enabled .Values.kubePrometheusStack.grafana.enabled -}}
+{{- printf "http://%s-grafana:3000" (include "octantis.fullname" .) -}}
+{{- else -}}
+{{- .Values.grafanaMcp.grafanaUrl -}}
+{{- end -}}
+{{- end }}
