@@ -37,12 +37,14 @@ class TestK8sDetection:
         assert result.resource.k8s_namespace == "production"
 
     def test_all_k8s_fields_mapped(self):
-        event = _make_event(extra={
-            "k8s.namespace.name": "default",
-            "k8s.pod.name": "pod-abc",
-            "k8s.node.name": "node-1",
-            "k8s.deployment.name": "deploy-v1",
-        })
+        event = _make_event(
+            extra={
+                "k8s.namespace.name": "default",
+                "k8s.pod.name": "pod-abc",
+                "k8s.node.name": "node-1",
+                "k8s.deployment.name": "deploy-v1",
+            }
+        )
         result = EnvironmentDetector().detect(event)
         assert isinstance(result.resource, K8sResource)
         assert result.resource.k8s_namespace == "default"
@@ -53,12 +55,14 @@ class TestK8sDetection:
 
 class TestDockerDetection:
     def test_detect_from_container_runtime(self):
-        event = _make_event(extra={
-            "container.runtime": "docker",
-            "container.id": "abc123",
-            "container.name": "my-container",
-            "container.image.name": "nginx:latest",
-        })
+        event = _make_event(
+            extra={
+                "container.runtime": "docker",
+                "container.id": "abc123",
+                "container.name": "my-container",
+                "container.image.name": "nginx:latest",
+            }
+        )
         result = EnvironmentDetector().detect(event)
         assert isinstance(result.resource, DockerResource)
         assert result.resource.container_runtime == "docker"
@@ -75,13 +79,15 @@ class TestDockerDetection:
 
 class TestAWSDetection:
     def test_detect_from_cloud_provider(self):
-        event = _make_event(extra={
-            "cloud.provider": "aws",
-            "cloud.region": "us-east-1",
-            "host.id": "i-1234567890",
-            "cloud.account.id": "123456789012",
-            "cloud.platform": "ec2",
-        })
+        event = _make_event(
+            extra={
+                "cloud.provider": "aws",
+                "cloud.region": "us-east-1",
+                "host.id": "i-1234567890",
+                "cloud.account.id": "123456789012",
+                "cloud.platform": "ec2",
+            }
+        )
         result = EnvironmentDetector().detect(event)
         assert isinstance(result.resource, AWSResource)
         assert result.resource.cloud_provider == "aws"
@@ -93,11 +99,13 @@ class TestAWSDetection:
 
 class TestEKSPriority:
     def test_k8s_takes_priority_over_aws(self):
-        event = _make_event(extra={
-            "k8s.pod.name": "pod-in-eks",
-            "cloud.provider": "aws",
-            "cloud.region": "us-east-1",
-        })
+        event = _make_event(
+            extra={
+                "k8s.pod.name": "pod-in-eks",
+                "cloud.provider": "aws",
+                "cloud.region": "us-east-1",
+            }
+        )
         result = EnvironmentDetector().detect(event)
         assert isinstance(result.resource, K8sResource)
         assert result.resource.k8s_pod_name == "pod-in-eks"

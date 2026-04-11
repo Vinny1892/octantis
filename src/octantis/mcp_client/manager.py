@@ -64,9 +64,7 @@ class MCPClientManager:
     def validate_slots(self) -> None:
         """Validate MCP slot configuration. Raises SlotValidationError on violation."""
         if len(self._configs) < MIN_TOTAL:
-            raise SlotValidationError(
-                "no MCP servers configured — at least one is required"
-            )
+            raise SlotValidationError("no MCP servers configured — at least one is required")
 
         slots: dict[str, list[str]] = {}
         for cfg in self._configs:

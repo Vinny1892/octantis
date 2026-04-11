@@ -168,9 +168,7 @@ async def test_connect_fails_exhausted_retries() -> None:
     retry = MCPRetrySettings(max_attempts=1, backoff_base=0.01)
 
     with patch("octantis.mcp_client.manager.sse_client") as mock_sse:
-        mock_sse.return_value.__aenter__ = AsyncMock(
-            side_effect=ConnectionError("refused")
-        )
+        mock_sse.return_value.__aenter__ = AsyncMock(side_effect=ConnectionError("refused"))
         manager = MCPClientManager(
             configs=[_grafana_config()],
             retry_settings=retry,

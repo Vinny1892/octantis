@@ -200,4 +200,7 @@ async def test_investigate_docker_with_tools_llm_no_calls():
 
     investigation: InvestigationResult = result["investigation"]
     assert not investigation.mcp_degraded
-    assert "docker" in investigation.evidence_summary.lower() or "nginx" in investigation.evidence_summary.lower()
+    assert (
+        "docker" in investigation.evidence_summary.lower()
+        or "nginx" in investigation.evidence_summary.lower()
+    )

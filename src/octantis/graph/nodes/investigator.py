@@ -73,9 +73,7 @@ def _build_trigger_context(event: InfraEvent) -> str:
         f"- **Type**: {event.event_type}",
         f"- **Source**: {event.source}",
     ]
-    parts.extend(
-        f"- {line}" for line in event.resource.context_summary().split("\n")
-    )
+    parts.extend(f"- {line}" for line in event.resource.context_summary().split("\n"))
 
     if event.metrics:
         parts.append("\n## Trigger Metrics")
@@ -102,7 +100,12 @@ def _classify_datasource(tool_name: str) -> str:
         return "k8s"
     if "docker" in name_lower or "container" in name_lower:
         return "docker"
-    if "aws" in name_lower or "ec2" in name_lower or "cloudwatch" in name_lower or "ecs" in name_lower:
+    if (
+        "aws" in name_lower
+        or "ec2" in name_lower
+        or "cloudwatch" in name_lower
+        or "ecs" in name_lower
+    ):
         return "aws"
     return "promql"
 

@@ -116,10 +116,7 @@ class EnvironmentDetector:
             return event.model_copy(update={"resource": promoted})
 
         # 3. Docker detection
-        if (
-            extra.get("container.runtime") == "docker"
-            or extra.get("container.id")
-        ):
+        if extra.get("container.runtime") == "docker" or extra.get("container.id"):
             promoted = _promote_docker(resource)
             log.debug(
                 "environment.detected",
@@ -148,9 +145,7 @@ class EnvironmentDetector:
         promoted = _promote_k8s(resource)
         return event.model_copy(update={"resource": promoted})
 
-    def _promote_by_platform(
-        self, resource: OTelResource, platform: str
-    ) -> OTelResource:
+    def _promote_by_platform(self, resource: OTelResource, platform: str) -> OTelResource:
         if platform == "k8s":
             return _promote_k8s(resource)
         if platform == "docker":

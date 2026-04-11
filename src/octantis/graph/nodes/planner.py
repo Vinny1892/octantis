@@ -73,6 +73,8 @@ Investigation summary:
 
 {platform_context}
 """
+
+
 async def planner_node(state: AgentState) -> AgentState:
     """Call LLM to generate remediation action plan."""
     event_id = state["investigation"].original_event.event_id
