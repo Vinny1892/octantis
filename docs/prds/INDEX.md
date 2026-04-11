@@ -8,6 +8,7 @@
 | 002 | [Grafana MCP Analysis — Trigger-Based Investigation](prd-002-grafana-mcp-analysis.md) | Replace static enrichment with LLM-driven analysis via Grafana MCP, using OTLP events as triggers and querying Prometheus/Loki directly for investigation | alta | medium | Vinicius Espindola | architecture, grafana, mcp, llm, prometheus, loki, pipeline | 2026-04-06 |
 | 003 | [Multi-Platform Support — Docker & AWS](prd-003-multi-platform-docker-aws.md) | Expand Octantis to support Docker and AWS environments via platform detection, Node Exporter compatibility, Docker MCP, and AWS MCP integrations | media | medium | Vinicius Espindola | architecture, docker, aws, mcp, node-exporter, multi-platform | 2026-04-09 |
 | 004 | [Octantis Helm Chart — Modular Deployment](prd-004-helm-chart.md) | Create a modular Helm chart for Octantis with toggleable components (OTel Collector, OTel Operator, Grafana MCP, K8s MCP, kube-prometheus-stack) published to ghcr.io and ArtifactHub | media | medium | Vinicius Espindola | helm, kubernetes, deployment, distribution, otel, mcp, prometheus, monitoring | 2026-04-10 |
+| 005 | [Plugin Architecture & Open-Core Foundation](prd-005-plugin-architecture.md) | Introduce a plugin architecture to Octantis enabling open-core monetization — pluggable notifiers, MCP connectors, storage backends, pipeline processors, and UI providers with plan-based gating and AGPL-3.0 license migration | alta | large | Vinicius Espindola | architecture, plugins, monetization, open-core, licensing, agpl | 2026-04-10 |
 
 ## Dependency Graph
 
@@ -18,4 +19,6 @@ flowchart LR
     PRD002 --> PRD003
     PRD001 --> PRD004["004: Helm Chart"]
     PRD002 --> PRD004
+    PRD001 --> PRD005["005: Plugin Architecture"]
+    PRD002 --> PRD005
 ```
