@@ -21,6 +21,7 @@ description: "Deep-dive into the two layers that separate signal from noise befo
   - [Fingerprint Generation](#fingerprint-generation)
   - [Cooldown Logic](#cooldown-logic)
   - [LRU Eviction](#lru-eviction)
+- [Layer 3 — EnvironmentDetector](#layer-3--environmentdetector)
 - [Configuration](#configuration)
   - [Configuration Trade-offs](#configuration-trade-offs)
 - [How to Add a New Rule](#how-to-add-a-new-rule)
@@ -64,15 +65,16 @@ flowchart TD
     classDef void fill:none,stroke:none
 ```
 
-The two layers are **composed sequentially** in `main.py:95-100` (`src/octantis/main.py:95`):
+The three layers are **composed sequentially** in `main.py`:
 
 ```python
-# src/octantis/main.py:95
+# src/octantis/main.py
 async for event in consumer.events():
-    if not trigger_filter.should_investigate(event):   # Layer 1
+    if not trigger_filter.should_investigate(event):   # Layer 1 — TriggerFilter
         continue
-    if not cooldown.should_investigate(event):          # Layer 2
+    if not cooldown.should_investigate(event):          # Layer 2 — FingerprintCooldown
         continue
+    event = detector.detect(event)                      # Layer 3 — EnvironmentDetector
     await workflow.ainvoke({"event": event})             # MCP Investigation
 ```
 
@@ -154,7 +156,7 @@ If any metric in the event has one of these terms in its name, the event **alway
 #### Mode 2 — Threshold by category
 
 ```python
-# src/octantis/pipeline/trigger_filter.py:119
+# src/octantis/pipeline/trigger_filter.py
 if "cpu" in name and m.value >= self.cpu_ok_below:      # ≥75%
     breached.append(...)
 elif "memory" in name and m.value >= self.memory_ok_below:  # ≥80%
@@ -165,7 +167,18 @@ elif "restart" in name and m.value >= self.restart_count_ok_below:  # ≥3
     breached.append(...)
 ```
 
-The DROP criterion requires that **all thresholds are within normal range simultaneously**. If a single metric breaches, the event passes (`trigger_filter.py:128-133`).
+The rule also recognizes **Node Exporter host-level metrics** with `node_` prefix:
+
+| Prefix | Threshold | Example metric |
+|---|---|---|
+| `node_cpu` | `cpu_ok_below` (75%) | `node_cpu_seconds_total` (after counter normalization) |
+| `node_memory` | `memory_ok_below` (80%) | `node_memory_MemAvailable_bytes` |
+| `node_filesystem` | `memory_ok_below` (80%) | `node_filesystem_avail_bytes` |
+| `node_network` | Passes if present | `node_network_receive_errs_total` |
+
+This enables Octantis to handle Docker host and AWS EC2 metrics from Node Exporter alongside Kubernetes pod-level metrics.
+
+The DROP criterion requires that **all thresholds are within normal range simultaneously**. If a single metric breaches, the event passes.
 
 > **Example DROP:** event with `cpu_usage=50.0`, `memory_usage=60.0`, no errors, restarts=0 → all metrics healthy → `Decision.DROP`.
 >
@@ -202,18 +215,21 @@ If no log contains critical keywords and all are INFO/DEBUG, the event is droppe
 ### Fingerprint Generation
 
 ```python
-# src/octantis/pipeline/cooldown.py:21-40
+# src/octantis/pipeline/cooldown.py
 def _fingerprint(event: InfraEvent) -> str:
+    resource = event.resource
+    k8s_ns = resource.extra.get("k8s.namespace.name", "")
+    k8s_deploy = resource.extra.get("k8s.deployment.name", "")
+    k8s_pod = resource.extra.get("k8s.pod.name", "")
+
     parts = [
-        event.resource.k8s_namespace or "",
-        event.resource.k8s_deployment_name
-            or event.resource.k8s_pod_name
-            or event.source,
+        k8s_ns,
+        k8s_deploy or k8s_pod or event.source,
         event.event_type,
         ",".join(sorted(m.name for m in event.metrics)),
     ]
     if event.logs:
-        parts.append(event.logs[-1].body[:60])  # prefix of the most recent log
+        parts.append(event.logs[-1].body[:60])
 
     raw = "|".join(parts)
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
@@ -221,9 +237,9 @@ def _fingerprint(event: InfraEvent) -> str:
 
 The fingerprint is **deliberately coarse** — it does not include metric *values*, only *names*. This ensures that `cpu_usage=82%` and `cpu_usage=95%` from the same workload generate the same fingerprint and are treated as the same ongoing problem.
 
-The `[:60]` log prefix distinguishes different types of errors (`"OOMKilled: memory limit"` vs `"CrashLoopBackoff: back-off"`) without being sensitive to message variations that change per invocation.
+The fingerprint reads K8s attributes from the `extra` dict (before environment detection promotes the resource to a typed subclass). For Docker and AWS events without K8s attributes, it falls back to `event.source` for workload identity.
 
-**Intentional collision:** two different pods from the same Deployment in different namespaces have different fingerprints. Two different pods from the same Deployment in the same namespace have equal fingerprints — because they likely represent the same root cause.
+The `[:60]` log prefix distinguishes different types of errors (`"OOMKilled: memory limit"` vs `"CrashLoopBackoff: back-off"`) without being sensitive to message variations that change per invocation.
 
 ### Cooldown Logic
 
@@ -262,6 +278,39 @@ def _record(self, fp: str, now: float) -> None:
 ```
 
 When the fingerprint dict reaches `max_entries` (default: 1000), the entry with the oldest `last_seen` is removed. This means problems that stopped occurring are naturally forgotten and reintegrated into the investigation cycle when they return.
+
+---
+
+## Layer 3 — EnvironmentDetector
+
+**File:** `src/octantis/pipeline/environment_detector.py`
+
+**Problem it solves:** The OTLP parser creates a base `OTelResource` with all resource attributes in the `extra` dict. Downstream components (investigator, notifiers) need typed resource objects (`K8sResource`, `DockerResource`, `AWSResource`) with platform-specific fields for context-aware prompts and notifications.
+
+The `EnvironmentDetector` inspects resource attributes and **promotes** the base `OTelResource` to the correct typed subclass:
+
+| Priority | Detection rule | Resulting type |
+|---|---|---|
+| 1 | `OCTANTIS_PLATFORM` config override | Configured type |
+| 2 | `k8s.pod.name` or `k8s.namespace.name` in extra | `K8sResource` |
+| 3 | `container.runtime=docker` or `container.id` in extra | `DockerResource` |
+| 4 | `cloud.provider=aws` in extra | `AWSResource` |
+| 5 | No match (fallback) | `K8sResource` + warning log |
+
+**EKS edge case:** EKS pods have both K8s and AWS attributes. K8s takes priority (rule 2 before rule 4) because K8s MCP provides more relevant tools for pod-level investigation. Use `OCTANTIS_PLATFORM=aws` to override if needed.
+
+Each subclass implements `context_summary() -> str`, which the investigator and notifier use for LLM prompts and notification formatting:
+
+```python
+# K8sResource
+"Service: api-server\nNamespace: production\nPod: api-server-abc123"
+
+# DockerResource
+"Service: nginx-proxy\nContainer: nginx-proxy-1\nImage: nginx:1.25"
+
+# AWSResource
+"Service: api-service\nInstance: i-0abc123\nRegion: us-east-1"
+```
 
 ---
 

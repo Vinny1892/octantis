@@ -27,13 +27,15 @@ if TYPE_CHECKING:
 log = structlog.get_logger(__name__)
 
 INVESTIGATION_SYSTEM_PROMPT = """\
-You are Octantis, an expert SRE/infrastructure analyst investigating a Kubernetes \
+You are Octantis, an expert SRE/infrastructure analyst investigating an \
 infrastructure event.
 
-You have access to observability tools that let you query real-time data:
+You have access to observability and platform tools that let you query real-time data:
 - **PromQL queries** (Prometheus): CPU, memory, network, error rates, custom metrics
 - **LogQL queries** (Loki): application logs, error logs, container logs
 - **Kubernetes queries** (if available): pod status, events, deployments
+- **Docker queries** (if available): container inspection, logs, resource stats
+- **AWS queries** (if available): EC2 instance status, CloudWatch metrics, ECS tasks
 
 ## Investigation Strategy
 1. Start by understanding the trigger event context
@@ -46,8 +48,8 @@ You have access to observability tools that let you query real-time data:
 - CPU usage: `sum(rate(container_cpu_usage_seconds_total{namespace="NS",pod=~"POD.*"}[5m])) * 100`
 - Memory usage: `container_memory_working_set_bytes{namespace="NS",pod=~"POD.*"}`
 - Error rate: `sum(rate(http_requests_total{namespace="NS",status=~"5.."}[5m]))`
-- Restarts: `kube_pod_container_status_restarts_total{namespace="NS",pod=~"POD.*"}`
-- Pod ready: `kube_pod_status_ready{namespace="NS",pod=~"POD.*"}`
+- Node CPU: `sum(rate(node_cpu_seconds_total{instance=~"HOST.*"}[5m])) * 100`
+- Node memory: `node_memory_MemAvailable_bytes{instance=~"HOST.*"}`
 
 ## Common LogQL Patterns
 - Error logs: `{namespace="NS",pod=~"POD.*"} |= "error" | logfmt`
@@ -70,15 +72,10 @@ def _build_trigger_context(event: InfraEvent) -> str:
         "## Trigger Event",
         f"- **Type**: {event.event_type}",
         f"- **Source**: {event.source}",
-        f"- **Service**: {event.resource.service_name or 'unknown'}",
-        f"- **Namespace**: {event.resource.k8s_namespace or 'unknown'}",
     ]
-    if event.resource.k8s_pod_name:
-        parts.append(f"- **Pod**: {event.resource.k8s_pod_name}")
-    if event.resource.k8s_deployment_name:
-        parts.append(f"- **Deployment**: {event.resource.k8s_deployment_name}")
-    if event.resource.k8s_node_name:
-        parts.append(f"- **Node**: {event.resource.k8s_node_name}")
+    parts.extend(
+        f"- {line}" for line in event.resource.context_summary().split("\n")
+    )
 
     if event.metrics:
         parts.append("\n## Trigger Metrics")
@@ -103,7 +100,11 @@ def _classify_datasource(tool_name: str) -> str:
         return "logql"
     if "k8s" in name_lower or "kube" in name_lower or "pod" in name_lower:
         return "k8s"
-    return "promql"  # default to promql for unknown grafana tools
+    if "docker" in name_lower or "container" in name_lower:
+        return "docker"
+    if "aws" in name_lower or "ec2" in name_lower or "cloudwatch" in name_lower or "ecs" in name_lower:
+        return "aws"
+    return "promql"
 
 
 class _InvestigationState(AgentState):
@@ -128,11 +129,7 @@ async def investigate_node(
     )
 
     tools = mcp_manager.get_tools()
-    mcp_servers_used = [
-        name
-        for name in ["grafana", "k8s"]
-        if name not in [s.split("/")[-1] for s in mcp_manager.get_degraded_servers()]
-    ]
+    mcp_servers_used = mcp_manager.get_connected_servers()
 
     # Degraded mode: no tools available
     if not tools:

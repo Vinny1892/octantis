@@ -34,7 +34,7 @@ def _build_blocks(
 ) -> list[dict[str, Any]]:
     event = investigation.original_event
     svc = event.resource.service_name or "unknown"
-    ns = event.resource.k8s_namespace or "unknown"
+    context = event.resource.context_summary()
     emoji = _SEVERITY_EMOJI[analysis.severity]
 
     blocks: list[dict[str, Any]] = [
@@ -51,7 +51,7 @@ def _build_blocks(
             "type": "section",
             "fields": [
                 {"type": "mrkdwn", "text": f"*Service:*\n{svc}"},
-                {"type": "mrkdwn", "text": f"*Namespace:*\n{ns}"},
+                {"type": "mrkdwn", "text": f"*Context:*\n{context[:200]}"},
                 {
                     "type": "mrkdwn",
                     "text": f"*Severity:*\n{analysis.severity} ({analysis.confidence:.0%} confidence)",

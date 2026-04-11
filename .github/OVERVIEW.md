@@ -50,9 +50,15 @@ flowchart TD
         NO["notify\nSlack + Discord"]:::node
     end
 
-    subgraph mcp["MCP Servers"]
-        GF["Grafana MCP\nPromQL / LogQL"]:::ext
-        K8["K8s MCP\n(optional)"]:::ext
+    subgraph detect["Environment Detection  (src/octantis/pipeline/)"]
+        ED["EnvironmentDetector\nK8s / Docker / AWS"]:::pipe
+    end
+
+    subgraph mcp["MCP Servers (slot model)"]
+        GF["Grafana MCP\nPromQL / LogQL\n(observability slot)"]:::ext
+        K8["K8s MCP\n(platform slot)"]:::ext
+        DK["Docker MCP\n(platform slot)"]:::ext
+        AW["AWS MCP\n(platform slot)"]:::ext
     end
 
     OC -->|"OTLP/gRPC"| GRPC
@@ -62,10 +68,13 @@ flowchart TD
     QUEUE -->|"AsyncIterator[InfraEvent]"| TF
     TF -->|"PASS"| CD
     TF -->|"DROP ❌"| VOID1[" "]:::void
-    CD -->|"new fingerprint"| INV
+    CD -->|"new fingerprint"| ED
     CD -->|"duplicate ❌"| VOID2[" "]:::void
+    ED -->|"typed resource"| INV
     INV -.->|"tool calls"| GF
     INV -.->|"tool calls"| K8
+    INV -.->|"tool calls"| DK
+    INV -.->|"tool calls"| AW
     INV --> AN
     AN --> RT
     RT -->|"severity ≥ threshold"| PL
@@ -84,8 +93,8 @@ flowchart TD
 | Module | Responsibility | Key file |
 |---|---|---|
 | **Receiver** | Receives OTLP events via gRPC (:4317) and HTTP (:4318) | `receivers/` |
-| **Pipeline** | Decides what is worth the LLM cost | `pipeline/` |
-| **MCP Client** | SSE connection to Grafana MCP and K8s MCP | `mcp_client/manager.py` |
+| **Pipeline** | Decides what is worth the LLM cost + environment detection | `pipeline/` |
+| **MCP Client** | Registry-based SSE connections to MCP servers (slot model: observability + platform) | `mcp_client/manager.py` |
 | **Graph** | Orchestrates the LangGraph workflow | `graph/workflow.py` |
 | **Metrics** | 9 Prometheus metrics on `:9090/metrics` | `metrics.py` |
 | **Notifiers** | Formats and sends Slack Block Kit / Discord Embeds | `notifiers/` |
@@ -102,7 +111,8 @@ src/octantis/
 ├── metrics.py               # 9 Prometheus metrics + HTTP server
 ├── pipeline/
 │   ├── trigger_filter.py    # ← Entry gate: deterministic rules
-│   └── cooldown.py          # ← Fingerprint deduplication + cooldown
+│   ├── cooldown.py          # ← Fingerprint deduplication + cooldown
+│   └── environment_detector.py  # ← Promotes OTelResource to K8s/Docker/AWS subclass
 ├── receivers/
 │   ├── receiver.py          # OTLPReceiver — orchestrates gRPC + HTTP + asyncio.Queue
 │   ├── grpc_server.py       # gRPC servicer (MetricsService, LogsService, TraceService)
@@ -135,6 +145,35 @@ Data flows through four shapes along the pipeline:
 %%{init: {"theme": "dark", "themeVariables": {"primaryColor": "#2d333b", "primaryBorderColor": "#6d5dfc", "primaryTextColor": "#e6edf3", "lineColor": "#8b949e"}}}%%
 classDiagram
     direction LR
+
+    class OTelResource {
+        +service_name: str
+        +host_name: str
+        +extra: dict
+        +context_summary() str
+    }
+
+    class K8sResource {
+        +k8s_namespace: str
+        +k8s_pod_name: str
+        +k8s_deployment_name: str
+    }
+
+    class DockerResource {
+        +container_id: str
+        +container_name: str
+        +image_name: str
+    }
+
+    class AWSResource {
+        +instance_id: str
+        +cloud_region: str
+        +aws_service: str
+    }
+
+    OTelResource <|-- K8sResource
+    OTelResource <|-- DockerResource
+    OTelResource <|-- AWSResource
 
     class InfraEvent {
         +event_id: str

@@ -1,0 +1,100 @@
+{
+  "family": "octantis",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::ACCOUNT_ID:role/octantis-task-role",
+  "containerDefinitions": [
+    {
+      "name": "octantis",
+      "image": "ghcr.io/vinny1892/octantis:latest",
+      "essential": true,
+      "portMappings": [
+        {"containerPort": 4317, "protocol": "tcp"},
+        {"containerPort": 4318, "protocol": "tcp"},
+        {"containerPort": 9090, "protocol": "tcp"}
+      ],
+      "environment": [
+        {"name": "OTLP_GRPC_PORT", "value": "4317"},
+        {"name": "OTLP_HTTP_PORT", "value": "4318"},
+        {"name": "LLM_PROVIDER", "value": "bedrock"},
+        {"name": "LLM_MODEL", "value": "global.anthropic.claude-opus-4-6-v1"},
+        {"name": "AWS_REGION_NAME", "value": "us-east-1"},
+        {"name": "GRAFANA_MCP_URL", "value": "http://localhost:8080/sse"},
+        {"name": "AWS_MCP_URL", "value": "http://localhost:8082/sse"},
+        {"name": "OCTANTIS_PLATFORM", "value": "aws"},
+        {"name": "INVESTIGATION_MAX_QUERIES", "value": "10"},
+        {"name": "INVESTIGATION_TIMEOUT_SECONDS", "value": "60"},
+        {"name": "PIPELINE_CPU_THRESHOLD", "value": "75.0"},
+        {"name": "PIPELINE_MEMORY_THRESHOLD", "value": "80.0"},
+        {"name": "PIPELINE_COOLDOWN_SECONDS", "value": "300"},
+        {"name": "MIN_SEVERITY_TO_NOTIFY", "value": "MODERATE"},
+        {"name": "LOG_LEVEL", "value": "INFO"}
+      ],
+      "secrets": [
+        {
+          "name": "GRAFANA_MCP_API_KEY",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:octantis/grafana-mcp-key"
+        },
+        {
+          "name": "SLACK_WEBHOOK_URL",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:octantis/slack-webhook"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/octantis",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "octantis"
+        }
+      }
+    },
+    {
+      "name": "mcp-grafana",
+      "image": "ghcr.io/grafana/mcp-grafana:latest",
+      "essential": true,
+      "portMappings": [
+        {"containerPort": 8080, "protocol": "tcp"}
+      ],
+      "environment": [
+        {"name": "GRAFANA_URL", "value": "https://grafana.example.com"}
+      ],
+      "secrets": [
+        {
+          "name": "GRAFANA_SERVICE_ACCOUNT_TOKEN",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:octantis/grafana-mcp-key"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/octantis",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "mcp-grafana"
+        }
+      }
+    },
+    {
+      "name": "mcp-aws",
+      "image": "ghcr.io/aws/aws-mcp-server:latest",
+      "essential": false,
+      "portMappings": [
+        {"containerPort": 8082, "protocol": "tcp"}
+      ],
+      "environment": [
+        {"name": "AWS_REGION", "value": "us-east-1"}
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/octantis",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "mcp-aws"
+        }
+      }
+    }
+  ]
+}

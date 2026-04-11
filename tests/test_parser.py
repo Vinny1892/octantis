@@ -110,8 +110,8 @@ class TestParseMetricsProto:
         req = _make_metrics_request()
         event = parser.parse_metrics_proto(req)
         assert event.resource.service_name == "my-service"
-        assert event.resource.k8s_namespace == "default"
-        assert event.resource.k8s_pod_name == "pod-abc"
+        assert event.resource.extra.get("k8s.namespace.name") == "default"
+        assert event.resource.extra.get("k8s.pod.name") == "pod-abc"
 
     def test_extra_attributes(self):
         req = ExportMetricsServiceRequest()
@@ -197,7 +197,7 @@ class TestParseLogsProto:
         req = _make_logs_request()
         event = parser.parse_logs_proto(req)
         assert event.resource.service_name == "my-service"
-        assert event.resource.k8s_namespace == "default"
+        assert event.resource.extra.get("k8s.namespace.name") == "default"
 
 
 class TestParseMetricsJson:
@@ -278,3 +278,114 @@ class TestMalformedInput:
     def test_logs_invalid_json_returns_none(self):
         result = parser.parse_logs_json({"garbage": True})
         assert result is None or result is not None  # no exception
+
+
+class TestCounterNormalization:
+    """Tests for Node Exporter counter normalization in the parser."""
+
+    def test_cpu_counter_normalized_to_percentage(self):
+        data = {
+            "resourceMetrics": [
+                {
+                    "resource": {
+                        "attributes": [
+                            {"key": "service.name", "value": {"stringValue": "node-exporter"}},
+                        ]
+                    },
+                    "scopeMetrics": [
+                        {
+                            "metrics": [
+                                {
+                                    "name": "node_cpu_seconds_total",
+                                    "unit": "s",
+                                    "gauge": {
+                                        "dataPoints": [
+                                            {
+                                                "asDouble": 123456.78,
+                                                "timeUnixNano": "1700000000000000000",
+                                            }
+                                        ]
+                                    },
+                                }
+                            ]
+                        }
+                    ],
+                }
+            ]
+        }
+        event = parser.parse_metrics_json(data)
+        assert event is not None
+        assert len(event.metrics) == 1
+        m = event.metrics[0]
+        assert m.name == "node_cpu_seconds_total"
+        assert m.value == (123456.78 % 1.0) * 100.0
+
+    def test_unknown_metric_not_normalized(self):
+        data = {
+            "resourceMetrics": [
+                {
+                    "resource": {
+                        "attributes": [
+                            {"key": "service.name", "value": {"stringValue": "my-app"}},
+                        ]
+                    },
+                    "scopeMetrics": [
+                        {
+                            "metrics": [
+                                {
+                                    "name": "custom_metric_total",
+                                    "unit": "1",
+                                    "gauge": {
+                                        "dataPoints": [
+                                            {
+                                                "asDouble": 123456.78,
+                                                "timeUnixNano": "1700000000000000000",
+                                            }
+                                        ]
+                                    },
+                                }
+                            ]
+                        }
+                    ],
+                }
+            ]
+        }
+        event = parser.parse_metrics_json(data)
+        assert event is not None
+        assert event.metrics[0].name == "custom_metric_total"
+        assert event.metrics[0].value == 123456.78
+
+    def test_node_memory_gauge_not_normalized(self):
+        data = {
+            "resourceMetrics": [
+                {
+                    "resource": {
+                        "attributes": [
+                            {"key": "service.name", "value": {"stringValue": "node-exporter"}},
+                        ]
+                    },
+                    "scopeMetrics": [
+                        {
+                            "metrics": [
+                                {
+                                    "name": "node_memory_MemAvailable_bytes",
+                                    "unit": "By",
+                                    "gauge": {
+                                        "dataPoints": [
+                                            {
+                                                "asDouble": 2147483648.0,
+                                                "timeUnixNano": "1700000000000000000",
+                                            }
+                                        ]
+                                    },
+                                }
+                            ]
+                        }
+                    ],
+                }
+            ]
+        }
+        event = parser.parse_metrics_json(data)
+        assert event is not None
+        assert event.metrics[0].name == "node_memory_MemAvailable_bytes"
+        assert event.metrics[0].value == 2147483648.0

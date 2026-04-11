@@ -7,7 +7,7 @@ import pytest
 
 from octantis.graph.nodes.analyzer import analyzer_node
 from octantis.models.analysis import Severity, SeverityAnalysis
-from octantis.models.event import InfraEvent, InvestigationResult, OTelResource
+from octantis.models.event import InfraEvent, InvestigationResult, K8sResource
 
 
 def _make_investigation(event_type: str = "metric") -> InvestigationResult:
@@ -15,7 +15,7 @@ def _make_investigation(event_type: str = "metric") -> InvestigationResult:
         event_id="test-001",
         event_type=event_type,
         source="test-service",
-        resource=OTelResource(
+        resource=K8sResource(
             service_name="api-server",
             k8s_namespace="production",
             k8s_pod_name="api-server-abc123",

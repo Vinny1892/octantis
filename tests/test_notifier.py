@@ -7,7 +7,7 @@ import pytest
 from octantis.graph.nodes.notifier import notifier_node
 from octantis.models.action_plan import ActionPlan, ActionStep, StepType
 from octantis.models.analysis import Severity, SeverityAnalysis
-from octantis.models.event import InfraEvent, InvestigationResult, OTelResource
+from octantis.models.event import InfraEvent, InvestigationResult, K8sResource
 from octantis.notifiers.discord import _build_embed
 from octantis.notifiers.slack import _build_blocks
 
@@ -17,7 +17,7 @@ def _make_state(severity: Severity = Severity.CRITICAL, mcp_degraded: bool = Fal
         event_id="notif-001",
         event_type="metric",
         source="api-server",
-        resource=OTelResource(
+        resource=K8sResource(
             service_name="api-server",
             k8s_namespace="production",
         ),

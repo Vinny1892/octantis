@@ -4,6 +4,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+import structlog
 from opentelemetry.proto.collector.logs.v1.logs_service_pb2 import (
     ExportLogsServiceRequest,
 )
@@ -14,13 +15,12 @@ from opentelemetry.proto.common.v1.common_pb2 import AnyValue, KeyValue
 
 from octantis.models.event import InfraEvent, LogRecord, MetricDataPoint, OTelResource
 
+log = structlog.get_logger(__name__)
+
 _RESOURCE_ATTR_MAP: dict[str, str] = {
     "service.name": "service_name",
     "service.namespace": "service_namespace",
-    "k8s.namespace.name": "k8s_namespace",
-    "k8s.pod.name": "k8s_pod_name",
-    "k8s.node.name": "k8s_node_name",
-    "k8s.deployment.name": "k8s_deployment_name",
+    "host.name": "host_name",
 }
 
 
@@ -60,6 +60,24 @@ def _nano_to_datetime(time_unix_nano: int) -> datetime:
     if time_unix_nano == 0:
         return datetime.now(tz=UTC)
     return datetime.fromtimestamp(time_unix_nano / 1e9, tz=UTC)
+
+
+_NODE_CPU_NORMALIZATION: set[str] = {"node_cpu_seconds_total"}
+
+
+def _normalize_metric(name: str, value: float) -> float:
+    """Normalize known Node Exporter counters to percentages."""
+    if name in _NODE_CPU_NORMALIZATION:
+        normalized = (value % 1.0) * 100.0
+        normalized = min(normalized, 100.0)
+        log.debug(
+            "parser.counter_normalized",
+            metric_name=name,
+            raw_value=value,
+            normalized_value=normalized,
+        )
+        return normalized
+    return value
 
 
 class OTLPParser:
@@ -121,6 +139,7 @@ class OTLPParser:
 
                     for dp in data_points:
                         value = dp.as_double if dp.as_double != 0.0 else float(dp.as_int)
+                        value = _normalize_metric(name, value)
                         metrics.append(
                             MetricDataPoint(
                                 name=name,

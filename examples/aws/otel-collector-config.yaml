@@ -1,0 +1,89 @@
+# OTel Collector config for AWS environments
+#
+# Collects host metrics and adds AWS resource attributes (cloud.provider,
+# cloud.region, host.id) so Octantis auto-detects the AWS platform.
+#
+# On real EC2/ECS, the resourcedetection processor auto-discovers instance
+# metadata. For local simulation, attributes are set manually.
+
+receivers:
+  # Host metrics (CPU, memory, disk, network)
+  hostmetrics:
+    collection_interval: 15s
+    scrapers:
+      cpu:
+      memory:
+      disk:
+      network:
+      load:
+
+  # Accept OTLP from instrumented applications
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  # On real AWS, use resourcedetection to auto-discover instance metadata:
+  #
+  # resourcedetection:
+  #   detectors: [ec2, ecs]
+  #   ec2:
+  #     tags:
+  #       - Name
+  #       - Environment
+  #
+  # For local simulation, add AWS attributes manually:
+  resource:
+    attributes:
+      - key: cloud.provider
+        value: "aws"
+        action: upsert
+      - key: cloud.region
+        value: "us-east-1"
+        action: upsert
+      - key: cloud.platform
+        value: "aws_ec2"
+        action: upsert
+      - key: host.id
+        value: "i-0simulation"
+        action: upsert
+      - key: cloud.account.id
+        value: "123456789012"
+        action: upsert
+
+  batch:
+    send_batch_size: 256
+    timeout: 10s
+
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 192
+    spike_limit_mib: 48
+
+exporters:
+  # Forward to Octantis OTLP receiver
+  otlp:
+    endpoint: octantis:4317
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    metrics:
+      receivers: [hostmetrics, otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp]
+
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp]
+
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      address: 0.0.0.0:8888

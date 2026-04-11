@@ -94,16 +94,25 @@ The investigator node is the heart of Octantis. It implements a **ReAct loop** (
 
 ### MCP Connection
 
-The `MCPClientManager` (`src/octantis/mcp_client/manager.py:17`) manages SSE connections with two MCP servers:
+The `MCPClientManager` (`src/octantis/mcp_client/manager.py`) manages SSE connections via a **registry pattern with slot validation**. MCP servers are organized into two slots:
 
-| Server | Required | Image | Tools |
+| Slot | Purpose | Max per slot | Servers |
 |---|---|---|---|
-| **Grafana MCP** | Yes | `ghcr.io/vinny1892/mcp-grafana:latest` | PromQL queries, LogQL queries, dashboard search |
-| **K8s MCP** | No (recommended) | `ghcr.io/containers/kubernetes-mcp-server:latest` | Pod status, events, deployments, node info |
+| **observability** | Metrics and logs queries | 1 | Grafana MCP |
+| **platform** | Platform-specific context | 1 | K8s MCP, Docker MCP, or AWS MCP |
 
-The connection uses SSE (Server-Sent Events). Grafana MCP authenticates via Bearer token (Grafana service account). K8s MCP authenticates via Kubernetes ServiceAccount (in-cluster RBAC, no external credentials).
+At least 1 MCP server is required. At most 1 per slot (multiple platform MCPs = error).
 
-If K8s MCP is not configured, the system works normally with Grafana only. If Grafana MCP fails to connect, the server is marked as **degraded** and the system enters degraded mode (`manager.py:46-67`).
+| Server | Slot | Image | Tools |
+|---|---|---|---|
+| **Grafana MCP** | observability | `ghcr.io/vinny1892/mcp-grafana:latest` | PromQL queries, LogQL queries, dashboard search |
+| **K8s MCP** | platform | `ghcr.io/containers/kubernetes-mcp-server:latest` | Pod status, events, deployments, node info |
+| **Docker MCP** | platform | (community/custom) | Container inspection, logs, resource stats |
+| **AWS MCP** | platform | (community/custom) | EC2 status, CloudWatch metrics, ECS tasks |
+
+The connection uses SSE (Server-Sent Events) with **exponential backoff retry** on failure (default: 3 attempts, 2s/4s/8s backoff). Connections are established generically via `MCPServerConfig` — adding a new MCP server requires only a config entry, no code change in the manager.
+
+If a platform MCP is not configured, the system works normally with Grafana only. If all MCPs fail to connect, Octantis enters degraded mode.
 
 ### The System Prompt
 
@@ -172,7 +181,7 @@ class MCPQueryRecord(BaseModel):
     query: str              # e.g., "sum(rate(...))"
     result_summary: str     # truncated result
     duration_ms: float      # query duration
-    datasource: str         # "promql", "logql", or "k8s"
+    datasource: str         # "promql", "logql", "k8s", "docker", or "aws"
     error: str | None       # error if query failed
 ```
 
@@ -447,12 +456,28 @@ ANTHROPIC_API_KEY=sk-ant-...
 # AWS_REGION_NAME=us-east-1
 # Credentials: env vars (AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY), IRSA, or instance profile
 
-# Grafana MCP (required)
+# Grafana MCP (observability slot — required)
 GRAFANA_MCP_URL=http://mcp-grafana:8080/sse
 GRAFANA_MCP_API_KEY=glsa_...
 
-# K8s MCP (optional, recommended)
+# Platform slot — configure ONE of the following:
+# K8s MCP (Kubernetes environments)
 # K8S_MCP_URL=http://mcp-k8s:8080/sse
+
+# Docker MCP (Docker environments)
+# DOCKER_MCP_URL=http://mcp-docker:8080/sse
+# DOCKER_MCP_HEADERS={"Authorization": "Bearer token"}
+
+# AWS MCP (AWS environments)
+# AWS_MCP_URL=http://mcp-aws:8080/sse
+# AWS_MCP_HEADERS={"Authorization": "Bearer token"}
+
+# Platform detection (auto-detected from OTLP attributes, override with:)
+# OCTANTIS_PLATFORM=k8s  # k8s | docker | aws
+
+# MCP connection retry
+# MCP_RETRY_MAX_ATTEMPTS=3
+# MCP_RETRY_BACKOFF_BASE=2.0
 
 # Investigation budget
 INVESTIGATION_MAX_QUERIES=10
@@ -499,8 +524,11 @@ LANGUAGE=en     # default — everything in English
 
 | Situation | Behavior |
 |---|---|
+| No MCP configured | Startup failure — at least 1 MCP server is required |
+| Multiple platform MCPs configured | Startup failure — max 1 per slot (K8s, Docker, or AWS, not multiple) |
+| MCP unreachable at startup | Retry 3× with exponential backoff (2s, 4s, 8s), then hard fail |
 | Grafana MCP unavailable | Degraded mode: analyzes with trigger data only + warning in notifications |
-| K8s MCP unavailable | Investigation continues with Grafana only — no warning (K8s is optional) |
+| Platform MCP unavailable | Investigation continues with Grafana only — no warning (platform MCP is optional) |
 | Query budget exhausted | Investigation ends with partial result, `budget_exhausted=True` |
 | Investigation timeout | Partial result with queries executed up to that point |
 | LLM returns invalid JSON (analyzer) | Fallback to `MODERATE, confidence=0.5` — never silently drops |

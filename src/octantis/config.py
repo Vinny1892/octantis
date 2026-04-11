@@ -47,6 +47,33 @@ class K8sMCPSettings(BaseSettings):
     url: str | None = None
 
 
+class DockerMCPSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="DOCKER_MCP_", extra="ignore")
+
+    url: str | None = None
+    headers: str | None = None  # JSON-encoded
+
+
+class AWSMCPSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="AWS_MCP_", extra="ignore")
+
+    url: str | None = None
+    headers: str | None = None  # JSON-encoded
+
+
+class PlatformSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="OCTANTIS_", extra="ignore")
+
+    platform: Literal["k8s", "docker", "aws"] | None = None
+
+
+class MCPRetrySettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="MCP_RETRY_", extra="ignore")
+
+    max_attempts: int = 3
+    backoff_base: float = 2.0
+
+
 class InvestigationSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="INVESTIGATION_", extra="ignore")
 
@@ -127,6 +154,10 @@ class Settings(BaseSettings):
     llm: LLMSettings = Field(default_factory=LLMSettings)
     grafana_mcp: GrafanaMCPSettings = Field(default_factory=GrafanaMCPSettings)
     k8s_mcp: K8sMCPSettings = Field(default_factory=K8sMCPSettings)
+    docker_mcp: DockerMCPSettings = Field(default_factory=DockerMCPSettings)
+    aws_mcp: AWSMCPSettings = Field(default_factory=AWSMCPSettings)
+    platform: PlatformSettings = Field(default_factory=PlatformSettings)
+    mcp_retry: MCPRetrySettings = Field(default_factory=MCPRetrySettings)
     investigation: InvestigationSettings = Field(default_factory=InvestigationSettings)
     metrics: MetricsSettings = Field(default_factory=MetricsSettings)
     slack: SlackSettings = Field(default_factory=SlackSettings)

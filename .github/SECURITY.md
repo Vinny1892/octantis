@@ -46,6 +46,67 @@ The Grafana service account used by mcp-grafana must have the **Viewer** role (m
 
 The Kubernetes MCP server (`mcp-k8s`) runs with a dedicated ServiceAccount restricted to read-only verbs (`get`, `list`, `watch`) via ClusterRole RBAC. It cannot modify any cluster resources.
 
+### Docker MCP
+
+The Docker MCP server requires access to the Docker socket (`/var/run/docker.sock`). This is inherently privileged — any process with Docker socket access can control the host.
+
+**Mitigations:**
+
+1. **Read-only mode**: Configure the Docker MCP to expose only read-only operations (inspect, logs, stats). Disable any tools that can start, stop, or modify containers.
+2. **Socket proxy**: Use a Docker socket proxy (e.g., [Tecnativa/docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy)) that filters API calls. Allow only `GET` methods and specific endpoints (`/containers/json`, `/containers/{id}/json`, `/containers/{id}/logs`, `/containers/{id}/stats`).
+3. **Network isolation**: Run the Docker MCP server on the same host as the Docker daemon. Do not expose the Docker socket over TCP without TLS + client certificates.
+
+| Scenario | Protected? |
+|---|---|
+| LLM stops/removes a container | Yes (if read-only mode or socket proxy) |
+| LLM reads container logs | No — all container logs are accessible |
+| LLM inspects container environment variables | No — `docker inspect` exposes env vars (may contain secrets) |
+| LLM reads host filesystem via Docker | Yes (if read-only mode prevents `docker exec`) |
+
+**Recommendation:** Always use a Docker socket proxy in production. Never mount `/var/run/docker.sock` directly into the MCP container without filtering.
+
+### AWS MCP
+
+The AWS MCP server requires IAM credentials with access to AWS APIs. The LLM autonomously decides which API calls to make.
+
+**Mitigations:**
+
+1. **Least-privilege IAM policy**: Create a dedicated IAM user or role with only the read-only permissions needed:
+
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [{
+        "Effect": "Allow",
+        "Action": [
+            "ec2:DescribeInstances",
+            "ec2:DescribeInstanceStatus",
+            "cloudwatch:GetMetricData",
+            "cloudwatch:ListMetrics",
+            "ecs:DescribeTasks",
+            "ecs:DescribeServices",
+            "ecs:ListTasks",
+            "logs:GetLogEvents",
+            "logs:FilterLogEvents"
+        ],
+        "Resource": "*"
+    }]
+}
+```
+
+2. **No write permissions**: Never grant `RunInstances`, `TerminateInstances`, `StopInstances`, `UpdateService`, or any mutating actions.
+3. **Credential management**: Use IAM roles (IRSA on EKS, instance profiles on EC2) instead of static access keys. If static keys are required, rotate them regularly and store them in a secrets manager.
+4. **Region scoping**: If possible, scope the IAM policy to specific regions using `Condition` blocks.
+
+| Scenario | Protected? |
+|---|---|
+| LLM terminates an EC2 instance | Yes (if IAM policy is read-only) |
+| LLM reads CloudWatch metrics from other accounts | Yes (IAM is account-scoped by default) |
+| LLM reads logs containing sensitive data | No — CloudWatch Logs access is broad |
+| LLM describes all instances in the account | No — `DescribeInstances` returns all instances |
+
+**Recommendation:** Start with the minimal IAM policy above and expand only as needed. Use AWS CloudTrail to audit API calls made by the AWS MCP credentials.
+
 ### Recommendations for production
 
 1. **Always use `--enabled-tools=prometheus,loki`** on mcp-grafana. Never deploy without this flag in environments where Grafana has datasources beyond Prometheus and Loki.

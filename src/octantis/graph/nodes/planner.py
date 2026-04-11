@@ -12,6 +12,7 @@ from octantis.graph.nodes.utils import (
 )
 from octantis.graph.state import AgentState
 from octantis.models.action_plan import ActionPlan, ActionStep, StepType
+from octantis.models.event import K8sResource
 
 log = structlog.get_logger(__name__)
 
@@ -52,6 +53,14 @@ def _build_user_message(state: AgentState) -> str:
     analysis = state["analysis"]
     event = investigation.original_event
 
+    if isinstance(event.resource, K8sResource):
+        platform_context = f"""Kubernetes namespace: {event.resource.k8s_namespace or "unknown"}
+Pod: {event.resource.k8s_pod_name or "unknown"}
+Node: {event.resource.k8s_node_name or "unknown"}
+Deployment: {event.resource.k8s_deployment_name or "unknown"}"""
+    else:
+        platform_context = event.resource.context_summary()
+
     return f"""Generate a remediation plan for this incident:
 
 Severity: {analysis.severity} (confidence: {analysis.confidence:.0%})
@@ -62,13 +71,8 @@ Is transient: {analysis.is_transient}
 Investigation summary:
 {investigation.evidence_summary[:1000]}
 
-Kubernetes namespace: {event.resource.k8s_namespace or "unknown"}
-Pod: {event.resource.k8s_pod_name or "unknown"}
-Node: {event.resource.k8s_node_name or "unknown"}
-Deployment: {event.resource.k8s_deployment_name or "unknown"}
+{platform_context}
 """
-
-
 async def planner_node(state: AgentState) -> AgentState:
     """Call LLM to generate remediation action plan."""
     event_id = state["investigation"].original_event.event_id

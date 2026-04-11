@@ -1,79 +1,132 @@
-"""MCPClientManager — manages SSE connections to MCP servers and exposes tools."""
+"""MCPClientManager — registry-based MCP server management with slot validation."""
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
-from typing import Any
+from dataclasses import dataclass, field
+from typing import Any, Literal
 
 import structlog
 from langchain_mcp_adapters.tools import load_mcp_tools
 from mcp.client.session import ClientSession
 from mcp.client.sse import sse_client
 
-from octantis.config import GrafanaMCPSettings, InvestigationSettings, K8sMCPSettings
+from octantis.config import MCPRetrySettings
 
 log = structlog.get_logger(__name__)
 
+MAX_PER_SLOT = 1
+MIN_TOTAL = 1
+
+
+@dataclass
+class MCPServerConfig:
+    """Describes a single MCP server connection."""
+
+    name: str
+    slot: Literal["observability", "platform"]
+    url: str
+    headers: dict[str, str] = field(default_factory=dict)
+
+
+class SlotValidationError(Exception):
+    """Raised when MCP slot validation fails."""
+
+
+class MCPConnectionExhausted(Exception):
+    """Raised when all retry attempts for an MCP connection are exhausted."""
+
 
 class MCPClientManager:
-    """Manages SSE connections to MCP servers and exposes tools."""
+    """Manages SSE connections to MCP servers via a registry pattern.
+
+    Accepts a list of MCPServerConfig objects. Validates slot limits
+    (min 1 total, max 1 per slot). Connects generically via SSE.
+    """
 
     def __init__(
         self,
-        grafana_settings: GrafanaMCPSettings,
-        k8s_settings: K8sMCPSettings,
-        investigation_settings: InvestigationSettings,
+        configs: list[MCPServerConfig],
+        retry_settings: MCPRetrySettings | None = None,
+        query_timeout: int = 60,
     ) -> None:
-        self._grafana_settings = grafana_settings
-        self._k8s_settings = k8s_settings
-        self._investigation_settings = investigation_settings
+        self._configs = configs
+        self._retry = retry_settings or MCPRetrySettings()
+        self._query_timeout = query_timeout
 
         self._sessions: dict[str, ClientSession] = {}
         self._tools: list[Any] = []
         self._degraded_servers: list[str] = []
-        # Keep references to context managers so we can clean up
         self._sse_contexts: dict[str, Any] = {}
         self._session_contexts: dict[str, Any] = {}
 
-    async def connect(self) -> None:
-        """Connect to configured MCP servers via SSE.
-
-        Logs ``mcp.connected`` on success or ``mcp.connection_failed`` on failure.
-        A failed connection does not raise — the server is marked as degraded.
-        """
-        await self._connect_grafana()
-        await self._connect_k8s()
-
-    async def _connect_grafana(self) -> None:
-        """Attempt to connect to the Grafana MCP server."""
-        if not self._grafana_settings.url:
-            log.warning("mcp.connection_failed", server="grafana", reason="url not configured")
-            self._degraded_servers.append("grafana")
-            return
-
-        if not self._grafana_settings.api_key:
-            log.error(
-                "mcp.connection_failed",
-                server="grafana",
-                reason="api_key not configured",
+    def validate_slots(self) -> None:
+        """Validate MCP slot configuration. Raises SlotValidationError on violation."""
+        if len(self._configs) < MIN_TOTAL:
+            raise SlotValidationError(
+                "no MCP servers configured — at least one is required"
             )
-            self._degraded_servers.append("grafana")
-            return
 
-        headers = {"Authorization": f"Bearer {self._grafana_settings.api_key}"}
-        await self._connect_server(
-            name="grafana",
-            url=self._grafana_settings.url,
-            headers=headers,
+        slots: dict[str, list[str]] = {}
+        for cfg in self._configs:
+            slots.setdefault(cfg.slot, []).append(cfg.name)
+
+        for slot_name, names in slots.items():
+            if len(names) > MAX_PER_SLOT:
+                raise SlotValidationError(
+                    f"multiple {slot_name} MCPs configured — limit is {MAX_PER_SLOT} per slot"
+                )
+
+        log.info(
+            "mcp.slot_validation",
+            observability_count=len(slots.get("observability", [])),
+            platform_count=len(slots.get("platform", [])),
         )
 
-    async def _connect_k8s(self) -> None:
-        """Attempt to connect to the K8s MCP server (optional)."""
-        if not self._k8s_settings.url:
-            log.debug("mcp.skipped", server="k8s", reason="url not configured")
-            return
+    async def connect(self) -> None:
+        """Connect to all configured MCP servers via SSE."""
+        self.validate_slots()
 
-        await self._connect_server(name="k8s", url=self._k8s_settings.url, headers={})
+        for cfg in self._configs:
+            await self._connect_with_retry(cfg)
+
+    async def _connect_with_retry(self, config: MCPServerConfig) -> None:
+        """Attempt connection with exponential backoff retry."""
+        max_attempts = self._retry.max_attempts
+        base = self._retry.backoff_base
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                await self._connect_server(
+                    name=config.name,
+                    url=config.url,
+                    headers=config.headers,
+                )
+                # Clear degraded status from prior failed attempts
+                if config.name in self._degraded_servers:
+                    self._degraded_servers.remove(config.name)
+                return
+            except Exception:
+                if attempt < max_attempts:
+                    backoff = base * (2 ** (attempt - 1))
+                    log.warning(
+                        "mcp.retry",
+                        server=config.name,
+                        attempt=attempt,
+                        max_attempts=max_attempts,
+                        backoff_s=backoff,
+                    )
+                    await asyncio.sleep(backoff)
+                else:
+                    log.error(
+                        "mcp.retry_exhausted",
+                        server=config.name,
+                        attempts=max_attempts,
+                    )
+                    raise MCPConnectionExhausted(
+                        f"all {max_attempts} connection attempts failed for {config.name}"
+                    )
 
     async def _connect_server(
         self,
@@ -82,16 +135,14 @@ class MCPClientManager:
         headers: dict[str, str],
     ) -> None:
         """Open an SSE connection to *url* and load its tools."""
-        timeout = self._investigation_settings.timeout_seconds
+        timeout = self._query_timeout
         sse_cm = None
         session_cm = None
         try:
-            # Enter the SSE client context manager
             sse_cm = sse_client(url=url, headers=headers, timeout=timeout)
             streams = await sse_cm.__aenter__()
             self._sse_contexts[name] = sse_cm
 
-            # Create and initialise the MCP session
             session_cm = ClientSession(*streams)
             session = await session_cm.__aenter__()
             self._session_contexts[name] = session_cm
@@ -99,7 +150,6 @@ class MCPClientManager:
             await session.initialize()
             self._sessions[name] = session
 
-            # Load tools as LangChain-compatible tools
             tools = await load_mcp_tools(session)
             self._tools.extend(tools)
 
@@ -112,7 +162,6 @@ class MCPClientManager:
         except Exception:
             log.warning("mcp.connection_failed", server=name, url=url, exc_info=True)
             self._degraded_servers.append(name)
-            # Clean up partially opened contexts to avoid orphaned SSE readers
             if session_cm is not None:
                 with contextlib.suppress(Exception):
                     await session_cm.__aexit__(None, None, None)
@@ -121,6 +170,7 @@ class MCPClientManager:
                 with contextlib.suppress(Exception):
                     await sse_cm.__aexit__(None, None, None)
                 self._sse_contexts.pop(name, None)
+            raise
 
     async def close(self) -> None:
         """Close all SSE connections and sessions."""
@@ -150,7 +200,11 @@ class MCPClientManager:
         """Return list of MCP server names that failed to connect."""
         return list(self._degraded_servers)
 
+    def get_connected_servers(self) -> list[str]:
+        """Return list of successfully connected server names."""
+        return list(self._sessions.keys())
+
     @property
     def is_degraded(self) -> bool:
-        """True if any required MCP server (Grafana) is unavailable."""
-        return "grafana" in self._degraded_servers
+        """True if any MCP server is unavailable."""
+        return len(self._degraded_servers) > 0

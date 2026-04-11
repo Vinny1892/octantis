@@ -7,15 +7,84 @@ from pydantic import BaseModel, Field
 
 
 class OTelResource(BaseModel):
-    """OpenTelemetry resource attributes."""
+    """Base OpenTelemetry resource attributes — common fields across all platforms."""
 
     service_name: str | None = None
     service_namespace: str | None = None
+    host_name: str | None = None
+    extra: dict[str, Any] = Field(default_factory=dict)
+
+    def context_summary(self) -> str:
+        """Platform-specific summary for LLM context. Override in subclasses."""
+        parts = [f"Service: {self.service_name or 'unknown'}"]
+        if self.host_name:
+            parts.append(f"Host: {self.host_name}")
+        return "\n".join(parts)
+
+
+class K8sResource(OTelResource):
+    """Kubernetes-specific resource attributes."""
+
     k8s_namespace: str | None = None
     k8s_pod_name: str | None = None
     k8s_node_name: str | None = None
     k8s_deployment_name: str | None = None
-    extra: dict[str, Any] = Field(default_factory=dict)
+
+    def context_summary(self) -> str:
+        parts = [
+            f"Service: {self.service_name or 'unknown'}",
+            f"Namespace: {self.k8s_namespace or 'unknown'}",
+        ]
+        if self.k8s_pod_name:
+            parts.append(f"Pod: {self.k8s_pod_name}")
+        if self.k8s_deployment_name:
+            parts.append(f"Deployment: {self.k8s_deployment_name}")
+        if self.k8s_node_name:
+            parts.append(f"Node: {self.k8s_node_name}")
+        return "\n".join(parts)
+
+
+class DockerResource(OTelResource):
+    """Docker-specific resource attributes."""
+
+    container_id: str | None = None
+    container_name: str | None = None
+    container_runtime: str | None = None
+    image_name: str | None = None
+
+    def context_summary(self) -> str:
+        parts = [f"Service: {self.service_name or 'unknown'}"]
+        if self.container_name:
+            parts.append(f"Container: {self.container_name}")
+        if self.image_name:
+            parts.append(f"Image: {self.image_name}")
+        if self.container_id:
+            parts.append(f"Container ID: {self.container_id[:12]}")
+        if self.host_name:
+            parts.append(f"Host: {self.host_name}")
+        return "\n".join(parts)
+
+
+class AWSResource(OTelResource):
+    """AWS-specific resource attributes."""
+
+    cloud_provider: str = "aws"
+    cloud_region: str | None = None
+    instance_id: str | None = None
+    account_id: str | None = None
+    aws_service: str | None = None
+
+    def context_summary(self) -> str:
+        parts = [f"Service: {self.service_name or 'unknown'}"]
+        if self.instance_id:
+            parts.append(f"Instance: {self.instance_id}")
+        if self.cloud_region:
+            parts.append(f"Region: {self.cloud_region}")
+        if self.aws_service:
+            parts.append(f"AWS Service: {self.aws_service}")
+        if self.account_id:
+            parts.append(f"Account: {self.account_id}")
+        return "\n".join(parts)
 
 
 class MetricDataPoint(BaseModel):
@@ -58,7 +127,7 @@ class MCPQueryRecord(BaseModel):
     query: str
     result_summary: str
     duration_ms: float
-    datasource: str  # "promql", "logql", "k8s"
+    datasource: str  # "promql", "logql", "k8s", "docker", "aws"
     error: str | None = None
 
 
@@ -80,11 +149,8 @@ class InvestigationResult(BaseModel):
         """Human-readable summary for LLM context."""
         parts = [
             f"Event: {self.original_event.event_type} from {self.original_event.source}",
-            f"Service: {self.original_event.resource.service_name or 'unknown'}",
-            f"Namespace: {self.original_event.resource.k8s_namespace or 'unknown'}",
+            self.original_event.resource.context_summary(),
         ]
-        if self.original_event.resource.k8s_pod_name:
-            parts.append(f"Pod: {self.original_event.resource.k8s_pod_name}")
         if self.original_event.metrics:
             metrics_str = ", ".join(
                 f"{m.name}={m.value}{m.unit or ''}" for m in self.original_event.metrics[:5]

@@ -1,0 +1,75 @@
+# OTel Collector config for Docker host monitoring
+#
+# Collects host metrics via hostmetrics receiver and Docker container stats
+# via docker_stats receiver. Adds container.runtime=docker resource attribute
+# so Octantis auto-detects the Docker platform.
+
+receivers:
+  # Host metrics (CPU, memory, disk, network) — equivalent to Node Exporter
+  hostmetrics:
+    collection_interval: 15s
+    scrapers:
+      cpu:
+      memory:
+      disk:
+      network:
+      load:
+
+  # Docker container stats (CPU, memory, network per container)
+  docker_stats:
+    endpoint: unix:///var/run/docker.sock
+    collection_interval: 15s
+    provide_per_core_cpu_metrics: false
+
+  # Accept OTLP from instrumented applications
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  # Add Docker resource attributes for Octantis environment detection
+  resource:
+    attributes:
+      - key: container.runtime
+        value: "docker"
+        action: upsert
+      - key: deployment.environment
+        value: "docker"
+        action: upsert
+
+  batch:
+    send_batch_size: 256
+    timeout: 10s
+
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 192
+    spike_limit_mib: 48
+
+exporters:
+  # Forward to Octantis OTLP receiver
+  otlp:
+    endpoint: octantis:4317
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    metrics:
+      receivers: [hostmetrics, docker_stats, otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp]
+
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp]
+
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      address: 0.0.0.0:8888

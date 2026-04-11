@@ -20,11 +20,11 @@ def _build_embed(
 ) -> dict[str, Any]:
     event = investigation.original_event
     svc = event.resource.service_name or "unknown"
-    ns = event.resource.k8s_namespace or "unknown"
+    context = event.resource.context_summary()
 
     fields: list[dict[str, Any]] = [
         {"name": "Service", "value": svc, "inline": True},
-        {"name": "Namespace", "value": ns, "inline": True},
+        {"name": "Context", "value": context[:200], "inline": True},
         {
             "name": "Severity",
             "value": f"{analysis.severity} ({analysis.confidence:.0%})",

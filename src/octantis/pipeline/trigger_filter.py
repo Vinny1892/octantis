@@ -122,6 +122,10 @@ class MetricThresholdRule:
             name = m.name.lower()
             if ("cpu" in name and m.value >= self.cpu_ok_below) or (
                 "memory" in name and m.value >= self.memory_ok_below
+            ) or (
+                "filesystem" in name and m.value >= self.memory_ok_below
+            ) or (
+                "network" in name and m.value >= self.error_rate_ok_below
             ):
                 breached.append(f"{m.name}={m.value:.1f}%")
             elif "error" in name and m.value >= self.error_rate_ok_below:

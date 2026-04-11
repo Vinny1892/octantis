@@ -1,0 +1,161 @@
+# Octantis — Docker Host Monitoring Stack
+#
+# Monitors Docker containers and host metrics via Node Exporter + OTel Collector.
+# Octantis auto-detects the Docker platform from OTLP resource attributes.
+#
+# Usage:
+#   cp ../../.env.example .env   # edit with your API keys
+#   docker compose up -d
+#
+# Ports:
+#   - 3000: Grafana UI (admin/admin)
+#   - 4317: Octantis OTLP gRPC
+#   - 4318: Octantis OTLP HTTP
+#   - 9090: Prometheus UI
+#   - 9091: Octantis Prometheus metrics
+
+services:
+  # ── Octantis ────────────────────────────────────────────────────────────────
+  octantis:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "9091:9090"   # Prometheus metrics
+    environment:
+      # OTLP Receiver
+      OTLP_GRPC_PORT: "4317"
+      OTLP_HTTP_PORT: "4318"
+      OTLP_GRPC_ENABLED: "true"
+      OTLP_HTTP_ENABLED: "true"
+
+      # LLM
+      LLM_PROVIDER: "anthropic"
+      LLM_MODEL: "claude-sonnet-4-6"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"
+
+      # Grafana MCP (observability slot)
+      GRAFANA_MCP_URL: "http://mcp-grafana:8080/sse"
+      GRAFANA_MCP_API_KEY: "dev-token"
+
+      # Docker MCP (platform slot)
+      DOCKER_MCP_URL: "http://mcp-docker:8080/sse"
+
+      # Platform detection (auto-detected from container.runtime attribute,
+      # but can be forced explicitly)
+      # OCTANTIS_PLATFORM: "docker"
+
+      # Investigation
+      INVESTIGATION_MAX_QUERIES: "10"
+      INVESTIGATION_TIMEOUT_SECONDS: "60"
+
+      # Pipeline
+      PIPELINE_CPU_THRESHOLD: "75.0"
+      PIPELINE_MEMORY_THRESHOLD: "80.0"
+      PIPELINE_COOLDOWN_SECONDS: "300"
+
+      # Notifications (optional)
+      # SLACK_WEBHOOK_URL: "https://hooks.slack.com/services/..."
+      # DISCORD_WEBHOOK_URL: "https://discord.com/api/webhooks/..."
+
+      MIN_SEVERITY_TO_NOTIFY: "MODERATE"
+      LOG_LEVEL: "INFO"
+    depends_on:
+      - mcp-grafana
+      - mcp-docker
+    restart: unless-stopped
+
+  # ── Grafana MCP Server (observability slot) ─────────────────────────────────
+  mcp-grafana:
+    image: ghcr.io/grafana/mcp-grafana:latest
+    environment:
+      GRAFANA_URL: "http://grafana:3000"
+      GRAFANA_API_KEY: "dev-token"
+    depends_on:
+      - grafana
+    restart: unless-stopped
+
+  # ── Docker MCP Server (platform slot) ───────────────────────────────────────
+  # Provides container inspection, logs, and stats to the LLM investigator.
+  # IMPORTANT: Mounts Docker socket read-only. See SECURITY.md for production
+  # recommendations (socket proxy, read-only mode).
+  mcp-docker:
+    image: ghcr.io/docker/mcp-server-docker:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    restart: unless-stopped
+
+  # ── Node Exporter (host metrics) ────────────────────────────────────────────
+  # Exposes host CPU, memory, disk, network metrics for Prometheus to scrape.
+  # These metrics flow through Prometheus → Grafana → Grafana MCP → Octantis.
+  node-exporter:
+    image: prom/node-exporter:v1.9.1
+    pid: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--path.rootfs=/rootfs"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+    restart: unless-stopped
+
+  # ── OTel Collector ──────────────────────────────────────────────────────────
+  # Collects host metrics and Docker container metrics, adds resource attributes
+  # (container.runtime=docker, container.id, etc.), forwards to Octantis.
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.149.0
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - octantis
+    restart: unless-stopped
+
+  # ── Grafana ─────────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:11.6.0
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: "admin"
+      GF_SECURITY_ADMIN_PASSWORD: "admin"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Viewer"
+      GF_SERVICE_ACCOUNTS_API_KEY: "dev-token"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - loki
+    restart: unless-stopped
+
+  # ── Prometheus ──────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v3.4.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=7d"
+    restart: unless-stopped
+
+  # ── Loki ────────────────────────────────────────────────────────────────────
+  loki:
+    image: grafana/loki:3.5.0
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    restart: unless-stopped
+
+volumes:
+  grafana-data:
+  prometheus-data:

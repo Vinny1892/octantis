@@ -4,12 +4,15 @@ import asyncio
 import signal
 import sys
 
+import json
+
 import structlog
 
 from octantis.config import settings
 from octantis.graph.workflow import build_workflow
-from octantis.mcp_client import MCPClientManager
+from octantis.mcp_client import MCPServerConfig, MCPClientManager
 from octantis.pipeline import FingerprintCooldown, TriggerFilter
+from octantis.pipeline.environment_detector import EnvironmentDetector
 from octantis.receivers import OTLPReceiver
 
 log = structlog.get_logger(__name__)
@@ -31,6 +34,67 @@ def _configure_logging() -> None:
         context_class=dict,
         logger_factory=structlog.PrintLoggerFactory(),
     )
+
+
+def _build_mcp_configs() -> list[MCPServerConfig]:
+    """Build MCP server configs from settings."""
+    configs: list[MCPServerConfig] = []
+
+    if settings.grafana_mcp.url:
+        headers = {}
+        if settings.grafana_mcp.api_key:
+            headers["Authorization"] = f"Bearer {settings.grafana_mcp.api_key}"
+        configs.append(
+            MCPServerConfig(
+                name="grafana",
+                slot="observability",
+                url=settings.grafana_mcp.url,
+                headers=headers,
+            )
+        )
+
+    if settings.k8s_mcp.url:
+        configs.append(
+            MCPServerConfig(
+                name="k8s",
+                slot="platform",
+                url=settings.k8s_mcp.url,
+            )
+        )
+
+    if settings.docker_mcp.url:
+        headers = {}
+        if settings.docker_mcp.headers:
+            try:
+                headers = json.loads(settings.docker_mcp.headers)
+            except json.JSONDecodeError:
+                pass
+        configs.append(
+            MCPServerConfig(
+                name="docker",
+                slot="platform",
+                url=settings.docker_mcp.url,
+                headers=headers,
+            )
+        )
+
+    if settings.aws_mcp.url:
+        headers = {}
+        if settings.aws_mcp.headers:
+            try:
+                headers = json.loads(settings.aws_mcp.headers)
+            except json.JSONDecodeError:
+                pass
+        configs.append(
+            MCPServerConfig(
+                name="aws",
+                slot="platform",
+                url=settings.aws_mcp.url,
+                headers=headers,
+            )
+        )
+
+    return configs
 
 
 def _build_pipeline():
@@ -63,12 +127,16 @@ async def run() -> None:
         log.info("octantis.metrics.started", port=settings.metrics.port)
 
     # Initialize MCP client
+    mcp_configs = _build_mcp_configs()
     mcp_manager = MCPClientManager(
-        grafana_settings=settings.grafana_mcp,
-        k8s_settings=settings.k8s_mcp,
-        investigation_settings=settings.investigation,
+        configs=mcp_configs,
+        retry_settings=settings.mcp_retry,
+        query_timeout=settings.investigation.timeout_seconds,
     )
     await mcp_manager.connect()
+
+    # Environment detector
+    detector = EnvironmentDetector(platform_override=settings.platform.platform)
 
     workflow = build_workflow(mcp_manager)
     consumer = OTLPReceiver(settings.otlp)
@@ -114,6 +182,9 @@ async def run() -> None:
             if not cooldown.should_investigate(event):
                 TRIGGER_TOTAL.labels(outcome="cooldown").inc()
                 continue
+
+            # Environment detection
+            event = detector.detect(event)
 
             TRIGGER_TOTAL.labels(outcome="passed").inc()
 

@@ -183,7 +183,48 @@ Expected output:
 {"grpc_port":4317,"http_port":4318,"event":"octantis.ready"}
 ```
 
-**Note:** Octantis depends on MCP servers for investigation. Without Grafana MCP, it operates in degraded mode (analyzes only with trigger data). Without Kubernetes MCP, it loses pod/events context but works normally.
+**Note:** Octantis depends on MCP servers for investigation. Without Grafana MCP, it operates in degraded mode (analyzes only with trigger data). Without a platform MCP (K8s, Docker, or AWS), it loses platform-specific context but works normally.
+
+### Docker Environment
+
+For monitoring Docker hosts with Node Exporter + OTel Collector:
+
+```env
+LLM_PROVIDER=anthropic
+ANTHROPIC_API_KEY=sk-ant-...
+
+GRAFANA_MCP_URL=http://localhost:8080/sse
+GRAFANA_MCP_API_KEY=glsa_...
+
+# Docker MCP (platform slot)
+DOCKER_MCP_URL=http://localhost:8081/sse
+
+# Optional: force platform detection
+# OCTANTIS_PLATFORM=docker
+
+LOG_LEVEL=DEBUG
+```
+
+### AWS Environment
+
+For monitoring EC2/ECS with Node Exporter + OTel Collector:
+
+```env
+LLM_PROVIDER=bedrock
+LLM_MODEL=global.anthropic.claude-opus-4-6-v1
+AWS_REGION_NAME=us-east-1
+
+GRAFANA_MCP_URL=http://localhost:8080/sse
+GRAFANA_MCP_API_KEY=glsa_...
+
+# AWS MCP (platform slot)
+AWS_MCP_URL=http://localhost:8082/sse
+
+# Optional: force platform detection
+# OCTANTIS_PLATFORM=aws
+
+LOG_LEVEL=DEBUG
+```
 
 ## Sending a Test Event
 
@@ -216,12 +257,68 @@ curl -X POST http://localhost:4318/v1/metrics \
   }'
 ```
 
+**Docker host event** (Node Exporter metrics):
+
+```bash
+curl -X POST http://localhost:4318/v1/metrics \
+  -H "Content-Type: application/json" \
+  -d '{
+    "resourceMetrics": [{
+      "resource": {
+        "attributes": [
+          {"key": "service.name", "value": {"stringValue": "nginx-proxy"}},
+          {"key": "container.runtime", "value": {"stringValue": "docker"}},
+          {"key": "container.name", "value": {"stringValue": "nginx-proxy-1"}},
+          {"key": "container.id", "value": {"stringValue": "abc123def456"}}
+        ]
+      },
+      "scopeMetrics": [{
+        "metrics": [{
+          "name": "node_cpu_seconds_total",
+          "unit": "%",
+          "gauge": {
+            "dataPoints": [{"asDouble": 92.5}]
+          }
+        }]
+      }]
+    }]
+  }'
+```
+
+**AWS EC2 event**:
+
+```bash
+curl -X POST http://localhost:4318/v1/metrics \
+  -H "Content-Type: application/json" \
+  -d '{
+    "resourceMetrics": [{
+      "resource": {
+        "attributes": [
+          {"key": "service.name", "value": {"stringValue": "api-service"}},
+          {"key": "cloud.provider", "value": {"stringValue": "aws"}},
+          {"key": "cloud.region", "value": {"stringValue": "us-east-1"}},
+          {"key": "host.id", "value": {"stringValue": "i-0abc123def456"}}
+        ]
+      },
+      "scopeMetrics": [{
+        "metrics": [{
+          "name": "node_cpu_seconds_total",
+          "unit": "%",
+          "gauge": {
+            "dataPoints": [{"asDouble": 88.0}]
+          }
+        }]
+      }]
+    }]
+  }'
+```
+
 In the Kind cluster, real events already flow automatically — the OTel Collector scrapes kube-state-metrics every 30s and forwards to Octantis.
 
 ## Running Tests
 
 ```bash
-uv run pytest                          # all tests (98)
+uv run pytest                          # all tests
 uv run pytest tests/test_trigger_filter.py -v  # trigger filter only
 uv run pytest tests/test_investigator.py -v    # investigator only
 uv run pytest -k "cooldown" -v         # by name
@@ -288,9 +385,16 @@ Depending on what you want to understand or modify:
 | `ANTHROPIC_API_KEY` | — | Anthropic key (required if provider=anthropic) |
 | `OPENROUTER_API_KEY` | — | OpenRouter key (required if provider=openrouter) |
 | `AWS_REGION_NAME` | — | AWS region (required if provider=bedrock). Credentials via standard AWS chain |
-| `GRAFANA_MCP_URL` | — | Grafana MCP SSE URL (required) |
+| `GRAFANA_MCP_URL` | — | Grafana MCP SSE URL (observability slot) |
 | `GRAFANA_MCP_API_KEY` | — | Grafana service account API key |
-| `K8S_MCP_URL` | — | K8s MCP SSE URL (recommended). Image: `ghcr.io/containers/kubernetes-mcp-server:latest` |
+| `K8S_MCP_URL` | — | K8s MCP SSE URL (platform slot). Image: `ghcr.io/containers/kubernetes-mcp-server:latest` |
+| `DOCKER_MCP_URL` | — | Docker MCP SSE URL (platform slot) |
+| `DOCKER_MCP_HEADERS` | — | JSON-encoded headers for Docker MCP |
+| `AWS_MCP_URL` | — | AWS MCP SSE URL (platform slot) |
+| `AWS_MCP_HEADERS` | — | JSON-encoded headers for AWS MCP |
+| `OCTANTIS_PLATFORM` | (auto) | Force platform detection: `k8s`, `docker`, or `aws` |
+| `MCP_RETRY_MAX_ATTEMPTS` | `3` | MCP connection retry attempts |
+| `MCP_RETRY_BACKOFF_BASE` | `2.0` | Exponential backoff base (seconds) |
 | `INVESTIGATION_MAX_QUERIES` | `10` | Max MCP queries per investigation |
 | `INVESTIGATION_TIMEOUT_SECONDS` | `60` | Total investigation timeout |
 | `INVESTIGATION_QUERY_TIMEOUT_SECONDS` | `10` | Per-query MCP timeout |

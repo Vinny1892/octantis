@@ -24,9 +24,14 @@ def _fingerprint(event: InfraEvent) -> str:
     Deliberately coarse — two events from the same pod reporting the same
     metric names should produce the same fingerprint even if values differ.
     """
+    resource = event.resource
+    k8s_ns = resource.extra.get("k8s.namespace.name", "")
+    k8s_deploy = resource.extra.get("k8s.deployment.name", "")
+    k8s_pod = resource.extra.get("k8s.pod.name", "")
+
     parts = [
-        event.resource.k8s_namespace or "",
-        event.resource.k8s_deployment_name or event.resource.k8s_pod_name or event.source,
+        k8s_ns,
+        k8s_deploy or k8s_pod or event.source,
         event.event_type,
         ",".join(sorted(m.name for m in event.metrics)),
     ]

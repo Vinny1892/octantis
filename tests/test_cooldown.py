@@ -20,8 +20,11 @@ def _event(
         source=source,
         resource=OTelResource(
             service_name=source,
-            k8s_namespace=ns,
-            k8s_pod_name=pod,
+            extra={
+                "k8s.namespace.name": ns,
+                "k8s.pod.name": pod,
+                "k8s.deployment.name": "",
+            },
         ),
         metrics=[MetricDataPoint(name=n, value=v) for n, v in (metrics or [])],
         logs=[LogRecord(body=b, severity_text=s) for b, s in (logs or [])],

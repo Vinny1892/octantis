@@ -20,8 +20,10 @@ def _event(
         source=source,
         resource=OTelResource(
             service_name=source,
-            k8s_namespace=ns,
-            k8s_pod_name=pod,
+            extra={
+                "k8s.namespace.name": ns,
+                "k8s.pod.name": pod,
+            },
         ),
         metrics=[MetricDataPoint(name=n, value=v) for n, v in (metrics or [])],
         logs=[LogRecord(body=b, severity_text=s) for b, s in (logs or [])],
@@ -112,7 +114,7 @@ def test_fail_open_unknown_event_passes():
         event_id="test-unknown",
         event_type="custom_webhook",
         source="external-system",
-        resource=OTelResource(k8s_namespace="staging"),
+        resource=OTelResource(extra={"k8s.namespace.name": "staging"}),
         logs=[LogRecord(body="webhook received", severity_text="")],
     )
     tf.evaluate(event)
@@ -147,3 +149,72 @@ def test_multiple_signals_single_pass():
         "benign_pattern",
         "no_signal",
     }
+
+
+# ─── Node Exporter metric tests ──────────────────────────────────────────────
+
+
+def test_node_cpu_above_threshold_triggers():
+    tf = TriggerFilter.default()
+    event = _event(
+        source="node-exporter",
+        metrics=[("node_cpu_seconds_total", 85.0)],
+    )
+    result = tf.evaluate(event)
+    assert result.decision == Decision.PASS
+    assert "cpu" in result.reason.lower() or "threshold" in result.reason.lower()
+
+
+def test_node_cpu_below_threshold_dropped():
+    tf = TriggerFilter.default()
+    event = _event(
+        source="node-exporter",
+        metrics=[("node_cpu_seconds_total", 30.0)],
+    )
+    result = tf.evaluate(event)
+    assert result.decision == Decision.DROP
+    assert "normal thresholds" in result.reason
+
+
+def test_node_memory_above_threshold_triggers():
+    tf = TriggerFilter.default()
+    event = _event(
+        source="node-exporter",
+        metrics=[("node_memory_MemAvailable_bytes", 85.0)],
+    )
+    result = tf.evaluate(event)
+    assert result.decision == Decision.PASS
+
+
+def test_node_filesystem_above_threshold_triggers():
+    tf = TriggerFilter.default()
+    event = _event(
+        source="node-exporter",
+        metrics=[("node_filesystem_avail_bytes", 90.0)],
+    )
+    result = tf.evaluate(event)
+    assert result.decision == Decision.PASS
+
+
+def test_node_network_error_always_analyzed():
+    tf = TriggerFilter.default()
+    event = _event(
+        source="node-exporter",
+        metrics=[("node_network_receive_errs_total", 0.5)],
+    )
+    result = tf.evaluate(event)
+    assert result.decision == Decision.PASS
+    assert "network" in result.reason.lower() or "error" in result.reason.lower()
+
+
+def test_mixed_k8s_and_node_exporter_metrics():
+    tf = TriggerFilter.default()
+    event = _event(
+        source="api-server",
+        metrics=[
+            ("cpu_usage", 30.0),
+            ("node_cpu_seconds_total", 90.0),
+        ],
+    )
+    result = tf.evaluate(event)
+    assert result.decision == Decision.PASS
