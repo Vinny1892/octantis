@@ -107,7 +107,7 @@ class MCPClientManager:
                 if config.name in self._degraded_servers:
                     self._degraded_servers.remove(config.name)
                 return
-            except Exception:
+            except Exception as exc:
                 if attempt < max_attempts:
                     backoff = base * (2 ** (attempt - 1))
                     log.warning(
@@ -126,7 +126,7 @@ class MCPClientManager:
                     )
                     raise MCPConnectionExhausted(
                         f"all {max_attempts} connection attempts failed for {config.name}"
-                    )
+                    ) from exc
 
     async def _connect_server(
         self,

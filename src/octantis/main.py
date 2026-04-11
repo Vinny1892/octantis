@@ -1,16 +1,16 @@
 """Octantis main entrypoint."""
 
 import asyncio
+import contextlib
+import json
 import signal
 import sys
-
-import json
 
 import structlog
 
 from octantis.config import settings
 from octantis.graph.workflow import build_workflow
-from octantis.mcp_client import MCPServerConfig, MCPClientManager
+from octantis.mcp_client import MCPClientManager, MCPServerConfig
 from octantis.pipeline import FingerprintCooldown, TriggerFilter
 from octantis.pipeline.environment_detector import EnvironmentDetector
 from octantis.receivers import OTLPReceiver
@@ -65,10 +65,8 @@ def _build_mcp_configs() -> list[MCPServerConfig]:
     if settings.docker_mcp.url:
         headers = {}
         if settings.docker_mcp.headers:
-            try:
+            with contextlib.suppress(json.JSONDecodeError):
                 headers = json.loads(settings.docker_mcp.headers)
-            except json.JSONDecodeError:
-                pass
         configs.append(
             MCPServerConfig(
                 name="docker",
@@ -81,10 +79,8 @@ def _build_mcp_configs() -> list[MCPServerConfig]:
     if settings.aws_mcp.url:
         headers = {}
         if settings.aws_mcp.headers:
-            try:
+            with contextlib.suppress(json.JSONDecodeError):
                 headers = json.loads(settings.aws_mcp.headers)
-            except json.JSONDecodeError:
-                pass
         configs.append(
             MCPServerConfig(
                 name="aws",

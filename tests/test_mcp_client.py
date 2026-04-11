@@ -8,8 +8,8 @@ import pytest
 
 from octantis.config import MCPRetrySettings
 from octantis.mcp_client.manager import (
-    MCPServerConfig,
     MCPClientManager,
+    MCPServerConfig,
     SlotValidationError,
 )
 
@@ -201,7 +201,7 @@ async def test_connect_succeeds_on_retry(
     sse_cm_ok = _mock_sse_context()
     mock_sse_client.side_effect = [sse_cm_fail, sse_cm_ok]
 
-    session_cm, session = _mock_session_context()
+    session_cm, _session = _mock_session_context()
     mock_client_session.return_value = session_cm
 
     mock_load_tools.return_value = [MagicMock(name="prometheus_query")]
