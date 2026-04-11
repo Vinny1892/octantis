@@ -19,6 +19,7 @@ dependencies = [
     "pydantic-settings>=2.6.0",
     "structlog>=24.4.0",
     "python-dotenv>=1.0.0",
+    "pytest-cov>=7.1.0",
 ]
 
 [project.scripts]
