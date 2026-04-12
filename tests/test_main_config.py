@@ -1,152 +1,22 @@
-"""Unit tests for main.py — _build_mcp_configs, _build_pipeline, _configure_logging, run()."""
+"""Unit tests for main.py — plugin-based architecture.
+
+Tests the registry-driven main.run() entry point, verifying that
+receivers, processors, MCP connectors are loaded via the Plugin Registry
+and events flow correctly through the pipeline.
+"""
 
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from octantis.main import _build_mcp_configs, _build_pipeline, _configure_logging, run
-
-# ─── _build_mcp_configs ───────────────────────────────────────────────────
+from octantis.main import _build_notifier_config, _build_pipeline_config, _configure_logging, run
 
 
-def test_build_mcp_configs_grafana_only():
-    with patch("octantis.main.settings") as mock:
-        mock.grafana_mcp.url = "http://grafana:8080"
-        mock.grafana_mcp.api_key = "test-key"
-        mock.k8s_mcp.url = None
-        mock.docker_mcp.url = None
-        mock.aws_mcp.url = None
-
-        configs = _build_mcp_configs()
-
-    assert len(configs) == 1
-    assert configs[0].name == "grafana"
-    assert configs[0].slot == "observability"
-    assert configs[0].url == "http://grafana:8080"
-    assert configs[0].headers["Authorization"] == "Bearer test-key"
+# ─── config helpers ──────────────────────────────────────────────────────
 
 
-def test_build_mcp_configs_grafana_no_api_key():
-    with patch("octantis.main.settings") as mock:
-        mock.grafana_mcp.url = "http://grafana:8080"
-        mock.grafana_mcp.api_key = None
-        mock.k8s_mcp.url = None
-        mock.docker_mcp.url = None
-        mock.aws_mcp.url = None
-
-        configs = _build_mcp_configs()
-
-    assert len(configs) == 1
-    assert configs[0].headers == {}
-
-
-def test_build_mcp_configs_k8s():
-    with patch("octantis.main.settings") as mock:
-        mock.grafana_mcp.url = None
-        mock.k8s_mcp.url = "http://k8s-mcp:3000"
-        mock.docker_mcp.url = None
-        mock.aws_mcp.url = None
-
-        configs = _build_mcp_configs()
-
-    assert len(configs) == 1
-    assert configs[0].name == "k8s"
-    assert configs[0].slot == "platform"
-
-
-def test_build_mcp_configs_docker_with_headers():
-    with patch("octantis.main.settings") as mock:
-        mock.grafana_mcp.url = None
-        mock.k8s_mcp.url = None
-        mock.docker_mcp.url = "http://docker-mcp:3000"
-        mock.docker_mcp.headers = '{"X-Token": "abc"}'
-        mock.aws_mcp.url = None
-
-        configs = _build_mcp_configs()
-
-    assert len(configs) == 1
-    assert configs[0].name == "docker"
-    assert configs[0].slot == "platform"
-    assert configs[0].headers == {"X-Token": "abc"}
-
-
-def test_build_mcp_configs_docker_invalid_headers():
-    with patch("octantis.main.settings") as mock:
-        mock.grafana_mcp.url = None
-        mock.k8s_mcp.url = None
-        mock.docker_mcp.url = "http://docker-mcp:3000"
-        mock.docker_mcp.headers = "not-json"
-        mock.aws_mcp.url = None
-
-        configs = _build_mcp_configs()
-
-    assert len(configs) == 1
-    assert configs[0].headers == {}
-
-
-def test_build_mcp_configs_aws_with_headers():
-    with patch("octantis.main.settings") as mock:
-        mock.grafana_mcp.url = None
-        mock.k8s_mcp.url = None
-        mock.docker_mcp.url = None
-        mock.aws_mcp.url = "http://aws-mcp:3000"
-        mock.aws_mcp.headers = '{"X-Region": "us-east-1"}'
-
-        configs = _build_mcp_configs()
-
-    assert len(configs) == 1
-    assert configs[0].name == "aws"
-    assert configs[0].slot == "platform"
-    assert configs[0].headers == {"X-Region": "us-east-1"}
-
-
-def test_build_mcp_configs_aws_invalid_headers():
-    with patch("octantis.main.settings") as mock:
-        mock.grafana_mcp.url = None
-        mock.k8s_mcp.url = None
-        mock.docker_mcp.url = None
-        mock.aws_mcp.url = "http://aws-mcp:3000"
-        mock.aws_mcp.headers = "bad-json"
-
-        configs = _build_mcp_configs()
-
-    assert configs[0].headers == {}
-
-
-def test_build_mcp_configs_all_platforms():
-    with patch("octantis.main.settings") as mock:
-        mock.grafana_mcp.url = "http://grafana:8080"
-        mock.grafana_mcp.api_key = None
-        mock.k8s_mcp.url = "http://k8s:3000"
-        mock.docker_mcp.url = "http://docker:3000"
-        mock.docker_mcp.headers = None
-        mock.aws_mcp.url = "http://aws:3000"
-        mock.aws_mcp.headers = None
-
-        configs = _build_mcp_configs()
-
-    assert len(configs) == 4
-    names = {c.name for c in configs}
-    assert names == {"grafana", "k8s", "docker", "aws"}
-
-
-def test_build_mcp_configs_none():
-    with patch("octantis.main.settings") as mock:
-        mock.grafana_mcp.url = None
-        mock.k8s_mcp.url = None
-        mock.docker_mcp.url = None
-        mock.aws_mcp.url = None
-
-        configs = _build_mcp_configs()
-
-    assert configs == []
-
-
-# ─── _build_pipeline ──────────────────────────────────────────────────────
-
-
-def test_build_pipeline_returns_filter_and_cooldown():
+def test_build_pipeline_config():
     with patch("octantis.main.settings") as mock:
         mock.pipeline.cpu_threshold = 80.0
         mock.pipeline.memory_threshold = 85.0
@@ -155,13 +25,13 @@ def test_build_pipeline_returns_filter_and_cooldown():
         mock.pipeline.cooldown_seconds = 600.0
         mock.pipeline.cooldown_max_entries = 500
 
-        trigger_filter, cooldown = _build_pipeline()
+        config = _build_pipeline_config()
 
-    assert trigger_filter is not None
-    assert cooldown is not None
+    assert config["trigger-filter"]["cpu_threshold"] == 80.0
+    assert config["fingerprint-cooldown"]["cooldown_seconds"] == 600.0
 
 
-def test_build_pipeline_defaults():
+def test_build_pipeline_config_defaults():
     with patch("octantis.main.settings") as mock:
         mock.pipeline.cpu_threshold = 75.0
         mock.pipeline.memory_threshold = 80.0
@@ -170,13 +40,48 @@ def test_build_pipeline_defaults():
         mock.pipeline.cooldown_seconds = 300.0
         mock.pipeline.cooldown_max_entries = 1000
 
-        trigger_filter, cooldown = _build_pipeline()
+        config = _build_pipeline_config()
 
-    assert trigger_filter is not None
-    assert cooldown is not None
+    assert config["trigger-filter"]["cpu_threshold"] == 75.0
+    assert config["trigger-filter"]["benign_patterns"] is None
 
 
-# ─── _configure_logging ───────────────────────────────────────────────────
+def test_build_notifier_config_slack_enabled():
+    with patch("octantis.main.settings") as mock:
+        mock.slack.enabled = True
+        mock.slack.webhook_url = "https://hooks.slack.com/test"
+        mock.slack.bot_token = None
+        mock.slack.channel = "#alerts"
+        mock.discord.enabled = False
+
+        config = _build_notifier_config()
+
+    assert "slack" in config
+    assert config["slack"]["webhook_url"] == "https://hooks.slack.com/test"
+
+
+def test_build_notifier_config_discord_enabled():
+    with patch("octantis.main.settings") as mock:
+        mock.slack.enabled = False
+        mock.discord.enabled = True
+        mock.discord.webhook_url = "https://discord.com/webhook"
+
+        config = _build_notifier_config()
+
+    assert "discord" in config
+
+
+def test_build_notifier_config_none_enabled():
+    with patch("octantis.main.settings") as mock:
+        mock.slack.enabled = False
+        mock.discord.enabled = False
+
+        config = _build_notifier_config()
+
+    assert config == {}
+
+
+# ─── _configure_logging ──────────────────────────────────────────────────
 
 
 def test_configure_logging_tty():
@@ -207,7 +112,6 @@ def test_configure_logging_non_tty():
 
 
 def _mock_settings():
-    """Return a mock settings object with all required attributes."""
     mock = MagicMock()
     mock.log_level = "INFO"
     mock.metrics.enabled = False
@@ -228,6 +132,8 @@ def _mock_settings():
     mock.pipeline.benign_patterns_list = []
     mock.pipeline.cooldown_seconds = 300.0
     mock.pipeline.cooldown_max_entries = 1000
+    mock.slack.enabled = False
+    mock.discord.enabled = False
     return mock
 
 
@@ -243,27 +149,62 @@ def _make_event():
     )
 
 
-def _make_consumer(events_list):
-    """Create a mock OTLPReceiver that yields events from a list."""
+async def _events_from_list(events_list):
+    for e in events_list:
+        yield e
 
-    async def _fake_events():
-        for e in events_list:
-            yield e
 
-    mock = MagicMock()
-    mock.events.return_value = _fake_events()
-    mock.start = AsyncMock()
-    mock.stop = AsyncMock()
-    return mock
+def _make_registry(events_list=None, filter_pass=True, cooldown_pass=True):
+    from octantis.plugins.registry import LoadedPlugin, PluginType
+
+    mock_filter_instance = MagicMock()
+
+    async def filter_process(event):
+        return event if filter_pass else None
+
+    mock_filter_instance.process = filter_process
+
+    mock_cooldown_instance = MagicMock()
+
+    async def cooldown_process(event):
+        return event if cooldown_pass else None
+
+    mock_cooldown_instance.process = cooldown_process
+
+    filter_plugin = LoadedPlugin(
+        name="trigger-filter", type=PluginType.PROCESSOR,
+        instance=mock_filter_instance, source_package="octantis", version="0.1.0", priority=100,
+    )
+    cooldown_plugin = LoadedPlugin(
+        name="fingerprint-cooldown", type=PluginType.PROCESSOR,
+        instance=mock_cooldown_instance, source_package="octantis", version="0.1.0", priority=200,
+    )
+
+    mock_receiver_instance = MagicMock()
+    mock_receiver_instance.start = AsyncMock()
+    mock_receiver_instance.stop = AsyncMock()
+    mock_receiver_instance.events.return_value = _events_from_list(events_list or [])
+
+    receiver_plugin = LoadedPlugin(
+        name="otlp", type=PluginType.RECEIVER,
+        instance=mock_receiver_instance, source_package="octantis", version="0.1.0", priority=0,
+    )
+
+    registry = MagicMock()
+    registry.plugins.side_effect = lambda ptype=None: {
+        PluginType.PROCESSOR: [filter_plugin, cooldown_plugin],
+        PluginType.MCP: [],
+        PluginType.RECEIVER: [receiver_plugin],
+    }.get(ptype, [])
+    registry.discover.return_value = [receiver_plugin, filter_plugin, cooldown_plugin]
+    registry.setup_all.return_value = None
+    registry.teardown_all.return_value = None
+    return registry
 
 
 @pytest.mark.asyncio
 async def test_run_event_passes_pipeline():
-    """An event that passes filter and cooldown gets processed by the workflow."""
     event = _make_event()
-
-    mock_consumer = _make_consumer([event])
-
     mock_workflow = AsyncMock()
     mock_workflow.ainvoke.return_value = {
         "analysis": MagicMock(severity="CRITICAL"),
@@ -271,29 +212,16 @@ async def test_run_event_passes_pipeline():
         "investigation": MagicMock(queries_executed=[], mcp_degraded=False),
     }
 
-    mock_mcp_manager = AsyncMock()
-    mock_mcp_manager.is_degraded = False
+    mock_registry = _make_registry([event])
 
     with (
         patch("octantis.main.settings", _mock_settings()),
         patch("octantis.main._configure_logging"),
-        patch("octantis.main.MCPClientManager", return_value=mock_mcp_manager),
+        patch("octantis.main.PluginRegistry", return_value=mock_registry),
         patch("octantis.main.build_workflow", return_value=mock_workflow),
-        patch("octantis.main.OTLPReceiver", return_value=mock_consumer),
         patch("octantis.main.EnvironmentDetector") as MockDetector,
         patch("octantis.main.signal.signal"),
-        patch("octantis.main.TriggerFilter") as MockFilter,
-        patch("octantis.main.FingerprintCooldown") as MockCooldown,
     ):
-        mock_filter = MagicMock()
-        mock_filter.should_investigate.return_value = True
-        MockFilter.default.return_value = mock_filter
-
-        mock_cooldown = MagicMock()
-        mock_cooldown.should_investigate.return_value = True
-        mock_cooldown.stats.return_value = {}
-        MockCooldown.return_value = mock_cooldown
-
         mock_detector = MagicMock()
         mock_detector.detect.return_value = event
         MockDetector.return_value = mock_detector
@@ -301,39 +229,22 @@ async def test_run_event_passes_pipeline():
         await run()
 
     mock_workflow.ainvoke.assert_called_once()
-    mock_consumer.stop.assert_called_once()
-    mock_mcp_manager.close.assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_run_event_dropped_by_filter():
-    """An event that fails the trigger filter is dropped."""
     event = _make_event()
-
-    mock_consumer = _make_consumer([event])
-
     mock_workflow = AsyncMock()
-    mock_mcp_manager = AsyncMock()
-    mock_mcp_manager.is_degraded = False
+    mock_registry = _make_registry([event], filter_pass=False)
 
     with (
         patch("octantis.main.settings", _mock_settings()),
         patch("octantis.main._configure_logging"),
-        patch("octantis.main.MCPClientManager", return_value=mock_mcp_manager),
+        patch("octantis.main.PluginRegistry", return_value=mock_registry),
         patch("octantis.main.build_workflow", return_value=mock_workflow),
-        patch("octantis.main.OTLPReceiver", return_value=mock_consumer),
         patch("octantis.main.EnvironmentDetector"),
         patch("octantis.main.signal.signal"),
-        patch("octantis.main.TriggerFilter") as MockFilter,
-        patch("octantis.main.FingerprintCooldown") as MockCooldown,
     ):
-        mock_filter = MagicMock()
-        mock_filter.should_investigate.return_value = False
-        MockFilter.default.return_value = mock_filter
-
-        mock_cooldown = MagicMock()
-        MockCooldown.return_value = mock_cooldown
-
         await run()
 
     mock_workflow.ainvoke.assert_not_called()
@@ -341,35 +252,18 @@ async def test_run_event_dropped_by_filter():
 
 @pytest.mark.asyncio
 async def test_run_event_dropped_by_cooldown():
-    """An event that passes filter but fails cooldown is dropped."""
     event = _make_event()
-
-    mock_consumer = _make_consumer([event])
-
     mock_workflow = AsyncMock()
-    mock_mcp_manager = AsyncMock()
-    mock_mcp_manager.is_degraded = False
+    mock_registry = _make_registry([event], cooldown_pass=False)
 
     with (
         patch("octantis.main.settings", _mock_settings()),
         patch("octantis.main._configure_logging"),
-        patch("octantis.main.MCPClientManager", return_value=mock_mcp_manager),
+        patch("octantis.main.PluginRegistry", return_value=mock_registry),
         patch("octantis.main.build_workflow", return_value=mock_workflow),
-        patch("octantis.main.OTLPReceiver", return_value=mock_consumer),
         patch("octantis.main.EnvironmentDetector"),
         patch("octantis.main.signal.signal"),
-        patch("octantis.main.TriggerFilter") as MockFilter,
-        patch("octantis.main.FingerprintCooldown") as MockCooldown,
     ):
-        mock_filter = MagicMock()
-        mock_filter.should_investigate.return_value = True
-        MockFilter.default.return_value = mock_filter
-
-        mock_cooldown = MagicMock()
-        mock_cooldown.should_investigate.return_value = False
-        mock_cooldown.stats.return_value = {}
-        MockCooldown.return_value = mock_cooldown
-
         await run()
 
     mock_workflow.ainvoke.assert_not_called()
@@ -377,99 +271,121 @@ async def test_run_event_dropped_by_cooldown():
 
 @pytest.mark.asyncio
 async def test_run_workflow_error_doesnt_crash():
-    """A workflow error is logged but doesn't crash the loop."""
     event = _make_event()
-
-    mock_consumer = _make_consumer([event])
-
     mock_workflow = AsyncMock()
     mock_workflow.ainvoke.side_effect = RuntimeError("LLM timeout")
-
-    mock_mcp_manager = AsyncMock()
-    mock_mcp_manager.is_degraded = False
+    mock_registry = _make_registry([event])
 
     with (
         patch("octantis.main.settings", _mock_settings()),
         patch("octantis.main._configure_logging"),
-        patch("octantis.main.MCPClientManager", return_value=mock_mcp_manager),
+        patch("octantis.main.PluginRegistry", return_value=mock_registry),
         patch("octantis.main.build_workflow", return_value=mock_workflow),
-        patch("octantis.main.OTLPReceiver", return_value=mock_consumer),
         patch("octantis.main.EnvironmentDetector") as MockDetector,
         patch("octantis.main.signal.signal"),
-        patch("octantis.main.TriggerFilter") as MockFilter,
-        patch("octantis.main.FingerprintCooldown") as MockCooldown,
     ):
-        mock_filter = MagicMock()
-        mock_filter.should_investigate.return_value = True
-        MockFilter.default.return_value = mock_filter
-
-        mock_cooldown = MagicMock()
-        mock_cooldown.should_investigate.return_value = True
-        mock_cooldown.stats.return_value = {}
-        MockCooldown.return_value = mock_cooldown
-
         mock_detector = MagicMock()
         mock_detector.detect.return_value = event
         MockDetector.return_value = mock_detector
 
-        await run()  # Should not raise
-
-    mock_consumer.stop.assert_called_once()
+        await run()
 
 
 @pytest.mark.asyncio
 async def test_run_metrics_server_started():
-    """Metrics server is started when enabled."""
-    mock_consumer = _make_consumer([])
-
-    mock_mcp_manager = AsyncMock()
-    mock_mcp_manager.is_degraded = False
-
     mock_s = _mock_settings()
     mock_s.metrics.enabled = True
     mock_s.metrics.port = 9999
 
+    mock_registry = _make_registry([])
+
     with (
         patch("octantis.main.settings", mock_s),
         patch("octantis.main._configure_logging"),
-        patch("octantis.main.MCPClientManager", return_value=mock_mcp_manager),
+        patch("octantis.main.PluginRegistry", return_value=mock_registry),
         patch("octantis.main.build_workflow"),
-        patch("octantis.main.OTLPReceiver", return_value=mock_consumer),
         patch("octantis.main.EnvironmentDetector"),
         patch("octantis.main.signal.signal"),
-        patch("octantis.main.TriggerFilter") as MockFilter,
-        patch("octantis.main.FingerprintCooldown") as MockCooldown,
         patch("octantis.metrics.start_metrics_server") as mock_start,
     ):
-        MockFilter.default.return_value = MagicMock()
-        mock_cooldown = MagicMock()
-        mock_cooldown.stats.return_value = {}
-        MockCooldown.return_value = mock_cooldown
-
         await run()
 
     mock_start.assert_called_once_with(9999)
 
 
 @pytest.mark.asyncio
+async def test_run_with_mcp_connector():
+    event = _make_event()
+    mock_workflow = AsyncMock()
+    mock_workflow.ainvoke.return_value = {
+        "analysis": MagicMock(severity="CRITICAL"),
+        "notifications_sent": [],
+        "investigation": MagicMock(queries_executed=[], mcp_degraded=False),
+    }
+
+    mock_registry = _make_registry([event])
+
+    mock_mcp_plugin = MagicMock()
+    mock_mcp_plugin.instance.connect = AsyncMock()
+    mock_mcp_plugin.instance.close = AsyncMock()
+    mock_mcp_plugin.instance.is_degraded.return_value = False
+    mock_mcp_plugin.instance.get_connected_servers.return_value = ["grafana"]
+    mock_mcp_plugin.instance.get_degraded_servers.return_value = []
+    mock_mcp_plugin.instance.manager = MagicMock()
+
+    from octantis.plugins.registry import PluginType
+
+    original_side_effect = mock_registry.plugins.side_effect
+
+    def plugins_with_mcp(ptype=None):
+        if ptype == PluginType.MCP:
+            return [mock_mcp_plugin]
+        return original_side_effect(ptype)
+
+    mock_registry.plugins.side_effect = plugins_with_mcp
+
+    with (
+        patch("octantis.main.settings", _mock_settings()),
+        patch("octantis.main._configure_logging"),
+        patch("octantis.main.PluginRegistry", return_value=mock_registry),
+        patch("octantis.main.build_workflow", return_value=mock_workflow),
+        patch("octantis.main.EnvironmentDetector") as MockDetector,
+        patch("octantis.main.signal.signal"),
+    ):
+        mock_detector = MagicMock()
+        mock_detector.detect.return_value = event
+        MockDetector.return_value = mock_detector
+
+        await run()
+
+    mock_mcp_plugin.instance.connect.assert_called_once()
+    mock_mcp_plugin.instance.close.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_run_registry_teardown_called():
+    mock_registry = _make_registry([])
+
+    with (
+        patch("octantis.main.settings", _mock_settings()),
+        patch("octantis.main._configure_logging"),
+        patch("octantis.main.PluginRegistry", return_value=mock_registry),
+        patch("octantis.main.build_workflow"),
+        patch("octantis.main.EnvironmentDetector"),
+        patch("octantis.main.signal.signal"),
+    ):
+        await run()
+
+    mock_registry.teardown_all.assert_called_once()
+
+
+@pytest.mark.asyncio
 async def test_run_stop_event_breaks_loop():
-    """Setting the stop event breaks the event loop."""
     event = _make_event()
 
-    async def _infinite_events():
-        for _ in range(5):  # safety limit
-            yield event
-
-    mock_consumer = MagicMock()
-    mock_consumer.events.return_value = _infinite_events()
-    mock_consumer.start = AsyncMock()
-    mock_consumer.stop = AsyncMock()
-
     mock_workflow = AsyncMock()
-    mock_mcp_manager = AsyncMock()
-    mock_mcp_manager.is_degraded = False
+    mock_registry = _make_registry([event] * 5)
 
-    # Capture signal handler to call it
     signal_handlers = {}
 
     def capture_signal(sig, handler):
@@ -478,35 +394,29 @@ async def test_run_stop_event_breaks_loop():
     with (
         patch("octantis.main.settings", _mock_settings()),
         patch("octantis.main._configure_logging"),
-        patch("octantis.main.MCPClientManager", return_value=mock_mcp_manager),
+        patch("octantis.main.PluginRegistry", return_value=mock_registry),
         patch("octantis.main.build_workflow", return_value=mock_workflow),
-        patch("octantis.main.OTLPReceiver", return_value=mock_consumer),
         patch("octantis.main.EnvironmentDetector") as MockDetector,
         patch("octantis.main.signal.signal", side_effect=capture_signal),
-        patch("octantis.main.TriggerFilter") as MockFilter,
-        patch("octantis.main.FingerprintCooldown") as MockCooldown,
     ):
-        mock_filter = MagicMock()
+        from octantis.plugins.registry import PluginType
 
-        def should_investigate_side_effect(ev):
-            import signal as sig_mod
+        for lp in mock_registry.plugins(PluginType.PROCESSOR):
+            if lp.name == "trigger-filter":
+                original_process = lp.instance.process
 
-            if sig_mod.SIGINT in signal_handlers:
-                signal_handlers[sig_mod.SIGINT]()
-            return True
+                async def process_with_stop(evt):
+                    import signal as sig_mod
 
-        mock_filter.should_investigate.side_effect = should_investigate_side_effect
-        MockFilter.default.return_value = mock_filter
+                    if sig_mod.SIGINT in signal_handlers:
+                        signal_handlers[sig_mod.SIGINT]()
+                    return await original_process(evt)
 
-        mock_cooldown = MagicMock()
-        mock_cooldown.should_investigate.return_value = True
-        mock_cooldown.stats.return_value = {}
-        MockCooldown.return_value = mock_cooldown
+                lp.instance.process = process_with_stop
+                break
 
         mock_detector = MagicMock()
         mock_detector.detect.return_value = event
         MockDetector.return_value = mock_detector
 
         await run()
-
-    mock_consumer.stop.assert_called_once()

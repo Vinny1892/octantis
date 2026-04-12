@@ -1,19 +1,17 @@
 """Octantis main entrypoint."""
 
 import asyncio
-import contextlib
-import json
 import signal
 import sys
 
 import structlog
+from octantis_plugin_sdk import Event as SDKEvent
 
 from octantis.config import settings
 from octantis.graph.workflow import build_workflow
-from octantis.mcp_client import MCPClientManager, MCPServerConfig
-from octantis.pipeline import FingerprintCooldown, TriggerFilter
+from octantis.mcp_client.aggregator import AggregatedMCPManager
 from octantis.pipeline.environment_detector import EnvironmentDetector
-from octantis.receivers import OTLPReceiver
+from octantis.plugins.registry import PluginRegistry, PluginType
 
 log = structlog.get_logger(__name__)
 
@@ -36,78 +34,35 @@ def _configure_logging() -> None:
     )
 
 
-def _build_mcp_configs() -> list[MCPServerConfig]:
-    """Build MCP server configs from settings."""
-    configs: list[MCPServerConfig] = []
-
-    if settings.grafana_mcp.url:
-        headers = {}
-        if settings.grafana_mcp.api_key:
-            headers["Authorization"] = f"Bearer {settings.grafana_mcp.api_key}"
-        configs.append(
-            MCPServerConfig(
-                name="grafana",
-                slot="observability",
-                url=settings.grafana_mcp.url,
-                headers=headers,
-            )
-        )
-
-    if settings.k8s_mcp.url:
-        configs.append(
-            MCPServerConfig(
-                name="k8s",
-                slot="platform",
-                url=settings.k8s_mcp.url,
-            )
-        )
-
-    if settings.docker_mcp.url:
-        headers = {}
-        if settings.docker_mcp.headers:
-            with contextlib.suppress(json.JSONDecodeError):
-                headers = json.loads(settings.docker_mcp.headers)
-        configs.append(
-            MCPServerConfig(
-                name="docker",
-                slot="platform",
-                url=settings.docker_mcp.url,
-                headers=headers,
-            )
-        )
-
-    if settings.aws_mcp.url:
-        headers = {}
-        if settings.aws_mcp.headers:
-            with contextlib.suppress(json.JSONDecodeError):
-                headers = json.loads(settings.aws_mcp.headers)
-        configs.append(
-            MCPServerConfig(
-                name="aws",
-                slot="platform",
-                url=settings.aws_mcp.url,
-                headers=headers,
-            )
-        )
-
-    return configs
-
-
-def _build_pipeline():
-    """Instantiate trigger filter and fingerprint cooldown from settings."""
+def _build_pipeline_config() -> dict[str, dict]:
     cfg = settings.pipeline
+    return {
+        "trigger-filter": {
+            "cpu_threshold": cfg.cpu_threshold,
+            "memory_threshold": cfg.memory_threshold,
+            "error_rate_threshold": cfg.error_rate_threshold,
+            "benign_patterns": cfg.benign_patterns_list or None,
+        },
+        "fingerprint-cooldown": {
+            "cooldown_seconds": cfg.cooldown_seconds,
+            "max_entries": cfg.cooldown_max_entries,
+        },
+    }
 
-    trigger_filter = TriggerFilter.default(
-        cpu_threshold=cfg.cpu_threshold,
-        memory_threshold=cfg.memory_threshold,
-        error_rate_threshold=cfg.error_rate_threshold,
-        benign_patterns=cfg.benign_patterns_list,
-    )
-    cooldown = FingerprintCooldown(
-        cooldown_seconds=cfg.cooldown_seconds,
-        max_entries=cfg.cooldown_max_entries,
-    )
-    return trigger_filter, cooldown
+
+def _build_notifier_config() -> dict[str, dict]:
+    configs: dict[str, dict] = {}
+    if settings.slack.enabled:
+        configs["slack"] = {
+            "webhook_url": settings.slack.webhook_url,
+            "bot_token": settings.slack.bot_token,
+            "channel": settings.slack.channel,
+        }
+    if settings.discord.enabled:
+        configs["discord"] = {
+            "webhook_url": settings.discord.webhook_url,
+        }
+    return configs
 
 
 async def run() -> None:
@@ -122,21 +77,47 @@ async def run() -> None:
         start_metrics_server(settings.metrics.port)
         log.info("octantis.metrics.started", port=settings.metrics.port)
 
-    # Initialize MCP client
-    mcp_configs = _build_mcp_configs()
-    mcp_manager = MCPClientManager(
-        configs=mcp_configs,
-        retry_settings=settings.mcp_retry,
-        query_timeout=settings.investigation.timeout_seconds,
+    # Plugin registry — discovers all built-in and third-party plugins
+    registry = PluginRegistry()
+    registry.discover()
+
+    pipeline_config = _build_pipeline_config()
+    notifier_config = _build_notifier_config()
+    plugin_config: dict[str, dict] = {**pipeline_config, **notifier_config}
+
+    registry.setup_all(plugin_config)
+
+    processors = registry.plugins(PluginType.PROCESSOR)
+    log.info(
+        "octantis.processors.loaded",
+        processors=[p.name for p in processors],
+        priorities=[p.priority for p in processors],
     )
-    await mcp_manager.connect()
+
+    # Receiver — event source via the registry
+    receiver_plugins = registry.plugins(PluginType.RECEIVER)
+    receiver_plugin = receiver_plugins[0].instance if receiver_plugins else None
+
+    # MCP connectors — per-server plugins (Fork B=1), connected in parallel
+    mcp_plugins = registry.plugins(PluginType.MCP)
+    active_mcp_instances = [lp.instance for lp in mcp_plugins if lp.instance.manager is not None]
+    for mcp_instance in active_mcp_instances:
+        await mcp_instance.connect()
+    if active_mcp_instances:
+        log.info(
+            "octantis.mcp.connected",
+            servers=[p.name for p in active_mcp_instances],
+            connected=[s for p in active_mcp_instances for s in p.get_connected_servers()],
+            degraded=[s for p in active_mcp_instances for s in p.get_degraded_servers()],
+        )
 
     # Environment detector
     detector = EnvironmentDetector(platform_override=settings.platform.platform)
 
+    # Aggregator facade for workflow
+    mcp_manager = AggregatedMCPManager(active_mcp_instances)
+
     workflow = build_workflow(mcp_manager)
-    consumer = OTLPReceiver(settings.otlp)
-    trigger_filter, cooldown = _build_pipeline()
 
     stop_event = asyncio.Event()
 
@@ -147,36 +128,51 @@ async def run() -> None:
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, _handle_signal)
 
-    await consumer.start()
+    # Start the receiver (binds gRPC/HTTP ports)
+    if receiver_plugin:
+        await receiver_plugin.start()
     log.info(
         "octantis.ready",
         grpc_port=settings.otlp.grpc_port if settings.otlp.grpc_enabled else None,
         http_port=settings.otlp.http_port if settings.otlp.http_enabled else None,
         mcp_degraded=mcp_manager.is_degraded,
         cooldown_s=settings.pipeline.cooldown_seconds,
+        processors=[p.name for p in processors],
+        receiver=receiver_plugins[0].name if receiver_plugins else None,
     )
-
-    # ── Pipeline: Consumer → TriggerFilter → Cooldown → Workflow ──────────
-    #
-    # 1. TriggerFilter drops obviously benign events (health checks, boring metrics)
-    # 2. Cooldown suppresses identical fingerprints within the cooldown window
-    # 3. Workflow: investigate (MCP tools) → analyze → plan → notify
 
     from octantis.metrics import TRIGGER_TOTAL
 
     try:
-        async for event in consumer.events():
+        # Consume events from the receiver plugin
+        event_source = receiver_plugin if receiver_plugin else None
+        if event_source is None:
+            log.error("octantis.no_receiver")
+            return
+
+        async for event in event_source.events():
             if stop_event.is_set():
                 break
 
-            # Trigger filter
-            if not trigger_filter.should_investigate(event):
-                TRIGGER_TOTAL.labels(outcome="dropped").inc()
-                continue
+            # Run processors in priority order
+            dropped = False
+            for proc_plugin in processors:
+                sdk_event = SDKEvent(
+                    event_id=event.event_id,
+                    event_type=event.event_type,
+                    source=event.source,
+                    resource=event.resource.extra if hasattr(event.resource, "extra") else {},
+                    metrics=[{"name": m.name, "value": m.value} for m in event.metrics],
+                    logs=[{"body": l.body} for l in event.logs],
+                )
+                result = await proc_plugin.instance.process(sdk_event)
+                if result is None:
+                    dropped = True
+                    outcome = "dropped" if proc_plugin.name == "trigger-filter" else "cooldown"
+                    TRIGGER_TOTAL.labels(outcome=outcome).inc()
+                    break
 
-            # Fingerprint cooldown
-            if not cooldown.should_investigate(event):
-                TRIGGER_TOTAL.labels(outcome="cooldown").inc()
+            if dropped:
                 continue
 
             # Environment detection
@@ -204,7 +200,6 @@ async def run() -> None:
                     notified=notifications,
                     queries_count=len(investigation.queries_executed) if investigation else 0,
                     mcp_degraded=investigation.mcp_degraded if investigation else False,
-                    cooldown_stats=cooldown.stats(),
                 )
             except Exception as exc:
                 log.error(
@@ -214,9 +209,12 @@ async def run() -> None:
                     exc_info=True,
                 )
     finally:
-        await consumer.stop()
-        await mcp_manager.close()
-        log.info("octantis.stopped", cooldown_stats=cooldown.stats())
+        if receiver_plugin:
+            await receiver_plugin.stop()
+        for mcp_instance in active_mcp_instances:
+            await mcp_instance.close()
+        registry.teardown_all()
+        log.info("octantis.stopped")
 
 
 def main() -> None:

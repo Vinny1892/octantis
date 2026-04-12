@@ -20,10 +20,31 @@ dependencies = [
     "structlog>=24.4.0",
     "python-dotenv>=1.0.0",
     "pytest-cov>=7.1.0",
+    "octantis-plugin-sdk",
 ]
+
+[tool.uv.sources]
+octantis-plugin-sdk = { path = "packages/octantis-plugin-sdk", editable = true }
 
 [project.scripts]
 octantis = "octantis.main:main"
+
+[project.entry-points."octantis.receivers"]
+otlp = "octantis.plugins.builtins.receiver_plugin:OTLPReceiverPlugin"
+
+[project.entry-points."octantis.processors"]
+trigger-filter = "octantis.plugins.builtins.trigger_filter_plugin:TriggerFilterPlugin"
+fingerprint-cooldown = "octantis.plugins.builtins.cooldown_plugin:FingerprintCooldownPlugin"
+
+[project.entry-points."octantis.notifiers"]
+slack = "octantis.plugins.builtins.notifier_plugins:SlackNotifierPlugin"
+discord = "octantis.plugins.builtins.notifier_plugins:DiscordNotifierPlugin"
+
+[project.entry-points."octantis.mcp"]
+grafana-mcp = "octantis.plugins.builtins.mcp_plugins:GrafanaMCPPlugin"
+k8s-mcp = "octantis.plugins.builtins.mcp_plugins:K8sMCPPlugin"
+docker-mcp = "octantis.plugins.builtins.mcp_plugins:DockerMCPPlugin"
+aws-mcp = "octantis.plugins.builtins.mcp_plugins:AWSMCPPlugin"
 
 [build-system]
 requires = ["hatchling"]

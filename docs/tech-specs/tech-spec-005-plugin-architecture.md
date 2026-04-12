@@ -1,7 +1,7 @@
 ---
 spec_number: "005"
 prd_ref: "005"
-summary: "Plugin architecture with 5 Protocol interfaces, registry-based lifecycle, JWT Ed25519 plan gating, separate Apache-2.0 SDK, dual deploy modes (standalone + distributed via Redpanda), and AGPL-3.0 license migration"
+summary: "Plugin architecture with 6 Protocol interfaces (Ingester, Storage, MCPConnector, Processor, Notifier, UIProvider), registry-based lifecycle, JWT Ed25519 plan gating, separate Apache-2.0 SDK, dual deploy modes (standalone + distributed via Redpanda), and AGPL-3.0 license migration"
 priority: alta
 created: 2026-04-11
 updated: 2026-04-11
@@ -99,6 +99,7 @@ Event-driven (async) with plugin-based extensibility. Two deployment modes: stan
 ```mermaid
 graph TB
     subgraph SDK["octantis-plugin-sdk (Apache-2.0)"]
+        IP[IngesterPlugin Protocol]
         NP[NotifierPlugin Protocol]
         MP[MCPConnectorPlugin Protocol]
         SP[StoragePlugin Protocol]
@@ -125,7 +126,7 @@ graph TB
         end
 
         subgraph Runtime["Runtime"]
-            OTLP[OTLP Receiver]
+            OTLP[OTLP Ingester]
             WF[LangGraph Workflow]
         end
     end
@@ -153,7 +154,7 @@ graph TB
 ```mermaid
 graph LR
     subgraph Standalone["OCTANTIS_MODE=standalone"]
-        R1[OTLP Receiver] --> P1[Processors] --> TG[asyncio.TaskGroup]
+        R1[OTLP Ingester] --> P1[Processors] --> TG[asyncio.TaskGroup]
         TG --> W1[Worker 1]
         TG --> W2[Worker 2]
         TG --> WN[Worker N]
@@ -163,7 +164,7 @@ graph LR
 ```mermaid
 graph LR
     subgraph Distributed["OCTANTIS_MODE=ingester + worker"]
-        R2[OTLP Receiver] --> P2[Processors] --> RP[Redpanda]
+        R2[OTLP Ingester] --> P2[Processors] --> RP[Redpanda]
         RP --> CG[Consumer Group]
         CG --> WK1[Worker Pod 1]
         CG --> WK2[Worker Pod 2]
@@ -185,7 +186,7 @@ graph LR
 | TriggerFilter | Drop benign events | regex, threshold rules | Modified → implements PipelineProcessorPlugin |
 | FingerprintCooldown | Suppress duplicate fingerprints | in-memory dict | Modified → implements PipelineProcessorPlugin |
 | MemoryStorage | In-memory state (free tier) | Python dict | Added |
-| OTLP Receiver | Receive gRPC/HTTP telemetry | grpcio, aiohttp | Reused |
+| OTLP Ingester | Receive gRPC/HTTP telemetry | grpcio, aiohttp | Reused |
 | LangGraph Workflow | Investigate → Analyze → Plan → Notify | langgraph | Reused |
 | Redpanda Client | Publish/consume events (distributed mode) | `aiokafka` (Kafka-compatible) | Added (optional) |
 
@@ -194,7 +195,7 @@ graph LR
 ```mermaid
 sequenceDiagram
     participant OTel as OTel Collector
-    participant Recv as OTLP Receiver
+    participant Recv as OTLP Ingester
     participant Reg as Plugin Registry
     participant Proc as Processors (priority order)
     participant Broker as Redpanda (distributed only)
@@ -221,6 +222,55 @@ sequenceDiagram
 ### API Contracts — Plugin Protocols
 
 All protocols are defined in `octantis-plugin-sdk` and use `typing.Protocol` (PEP 544) for structural subtyping.
+
+> **Terminology:** Octantis uses **"Ingester"** (not "receiver") for its event-source Protocol. This avoids confusion with the OpenTelemetry Collector's "receiver" pipeline stage — Octantis Ingesters are plugins *inside* the Octantis process that produce SDK `Event` instances, regardless of wire protocol (OTLP gRPC, OTLP HTTP, pull-based scrapers, file tailers, etc.).
+
+#### IngesterPlugin
+
+```python
+from collections.abc import AsyncIterator
+from typing import Protocol, runtime_checkable
+from octantis_plugin_sdk.models import Event
+
+@runtime_checkable
+class IngesterPlugin(Protocol):
+    """Interface for event-source plugins — produce SDK Event instances for the pipeline.
+
+    One transport per plugin (SRP). Built-ins: `otlp-grpc`, `otlp-http`. Third parties
+    may ship Ingesters for Prometheus pull, syslog, file tails, webhooks, etc.
+    """
+
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def plugin_type(self) -> str:
+        return "ingester"
+
+    async def setup(self, config: dict) -> None:
+        """Initialize the listener (bind sockets, open files, etc.)."""
+        ...
+
+    async def teardown(self) -> None:
+        """Close the listener and release resources."""
+        ...
+
+    async def start(self) -> None:
+        """Begin accepting events."""
+        ...
+
+    async def stop(self) -> None:
+        """Stop accepting events (drain in-flight, then exit)."""
+        ...
+
+    def events(self) -> AsyncIterator[Event]:
+        """Yield SDK Event instances to the pipeline."""
+        ...
+
+    def config_schema(self) -> dict:
+        """Return JSON Schema for plugin configuration."""
+        ...
+```
 
 #### NotifierPlugin
 
@@ -880,32 +930,54 @@ Zero incremental infrastructure cost. The plugin system is a pure code architect
 
 ## 11. Rollout Plan
 
+> **Mandatory per-phase review — no phase is considered done without both:**
+>
+> 1. **Test suite review & update** — every phase MUST revisit the existing test suite (currently 254 tests, coverage ≥ 94%). New code requires new tests; refactored code requires existing tests to be re-read and adjusted (not just "made to pass"). Coverage MUST NOT regress below 94%.
+> 2. **Documentation review & update** — every phase MUST update affected docs: `README.md`, `docs/` guides, `CLAUDE.md`, `pyproject.toml` metadata, PRDs/Tech Specs cross-references, and any user-facing examples. Docs drift is treated as a blocker, not a follow-up.
+>
+> A phase that ships code without an accompanying test + docs review is incomplete and MUST be rolled back.
+
 ### Phases
 
-| Phase | What | Validation | Rollback |
-|-------|------|-----------|----------|
-| 1: SDK + Registry + Protocols | Publish `octantis-plugin-sdk`. Implement Plugin Registry with entry point discovery. Define 5 Protocols. | Unit tests for registry discovery, load order, duplicate handling. At least 1 built-in plugin loads via entry point. | `git revert` — no external consumers yet |
-| 2: Built-in plugin refactoring | Refactor all existing components to implement Protocols. Register via entry points in `pyproject.toml`. | All 254 existing tests pass. Octantis starts and processes events identically. | `git revert` — pre-0.0.1, no users |
-| 3: Plan gating | JWT Ed25519 validator. PlanGatingEngine with free/pro/enterprise rules. MCP slot enforcement. | Start with 2 MCPs + no license → error. Start with pro JWT → loads 2 MCPs. | Remove PlanGatingEngine, hardcode free tier |
-| 4: Concurrent standalone | asyncio.TaskGroup + semaphore in standalone mode. | 5 events arrive → 5 parallel investigations (verify via logs/metrics). | Revert to sequential `await` |
-| 5: Distributed mode | Redpanda client. Ingester mode publishes. Worker mode consumes. | Ingester + 3 workers + Redpanda. Events distributed. Worker crash → redelivery. | Set `OCTANTIS_MODE=standalone` |
-| 6: License migration | AGPL-3.0 LICENSE, headers, pyproject.toml, Chart.yaml, README, LICENSING.md. | `pip-licenses` audit clean. LICENSE file is AGPL-3.0. | `git revert` on LICENSE + headers |
+| Phase | What | Validation | Tests & Docs Review | Rollback |
+|-------|------|-----------|---------------------|----------|
+| 1: SDK + Registry + Protocols | Publish `octantis-plugin-sdk`. Implement Plugin Registry with entry point discovery. Define 6 Protocols (Ingester, Storage, MCPConnector, Processor, Notifier, UIProvider). | Unit tests for registry discovery, load order, duplicate handling. At least 1 built-in plugin loads via entry point. | **Tests:** new unit tests for registry + each Protocol contract. **Docs:** SDK README, Protocol reference docs, `CONTRIBUTING.md` plugin author guide. | `git revert` — no external consumers yet |
+| 2: Built-in plugin refactoring | Refactor all existing components to implement Protocols. Register via entry points in `pyproject.toml`. | All 254 existing tests pass. Octantis starts and processes events identically. | **Tests:** every refactored component's tests re-read and updated for the Protocol boundary — no blind "make green". **Docs:** architecture diagrams, component inventory, `CLAUDE.md` updated to describe entry-point model. | `git revert` — pre-0.0.1, no users |
+| 3: Plan gating | JWT Ed25519 validator. PlanGatingEngine with free/pro/enterprise rules. MCP slot enforcement. | Start with 2 MCPs + no license → error. Start with pro JWT → loads 2 MCPs. | **Tests:** JWT validation (valid/expired/tampered/wrong-key), tier enforcement edge cases, fixtures for all three tiers. **Docs:** `LICENSING.md`, tier matrix, operator guide on obtaining/installing a license. | Remove PlanGatingEngine, hardcode free tier |
+| 4: Concurrent standalone | asyncio.TaskGroup + semaphore in standalone mode. | 5 events arrive → 5 parallel investigations (verify via logs/metrics). | **Tests:** concurrency tests (race conditions, semaphore limits, cancellation). **Docs:** `OCTANTIS_WORKERS` tuning guide, performance expectations. | Revert to sequential `await` |
+| 5: Distributed mode | Redpanda client. Ingester mode publishes. Worker mode consumes. | Ingester + 3 workers + Redpanda. Events distributed. Worker crash → redelivery. | **Tests:** integration tests with a real Redpanda container (redelivery, consumer group rebalance, idempotency). **Docs:** distributed deployment guide, Helm chart values, Redpanda sizing, troubleshooting runbook. | Set `OCTANTIS_MODE=standalone` |
+| 6: License migration | AGPL-3.0 LICENSE, headers, pyproject.toml, Chart.yaml, README, LICENSING.md. | `pip-licenses` audit clean. LICENSE file is AGPL-3.0. | **Tests:** license-header linter, dependency license audit in CI. **Docs:** `LICENSE`, `LICENSING.md`, README badges, FAQ on AGPL implications for users and plugin authors. | `git revert` on LICENSE + headers |
 
 ### Launch Checklist
 
+**Implementation**
 - [ ] `octantis-plugin-sdk` published to PyPI
-- [ ] All 5 Protocol interfaces implemented and type-checked
+- [ ] All 6 Protocol interfaces (Ingester, Storage, MCPConnector, Processor, Notifier, UIProvider) implemented and type-checked
 - [ ] All built-in plugins load via entry points (zero direct imports in `main.py`)
 - [ ] Plugin Registry logs all lifecycle events
 - [ ] PlanGatingEngine enforces tier limits with clear error messages
 - [ ] JWT Ed25519 validation works offline
 - [ ] `OCTANTIS_MODE=standalone` processes events concurrently
 - [ ] `OCTANTIS_MODE=ingester` + `worker` processes events via Redpanda
-- [ ] All 254+ tests pass, coverage >= 94%
-- [ ] `pip-licenses` shows zero AGPL-incompatible dependencies
-- [ ] LICENSE file is AGPL-3.0
-- [ ] LICENSING.md explains dual-license model
-- [ ] README badges updated (license, SDK)
+
+**Tests (mandatory review — not just "green")**
+- [ ] Every existing test reviewed against the new Protocol boundaries (no blind rewrites)
+- [ ] New unit tests added for Registry, each Protocol, PlanGatingEngine, JWT validator
+- [ ] New concurrency tests for standalone mode (TaskGroup, semaphore, cancellation)
+- [ ] New integration tests for distributed mode against a real Redpanda container
+- [ ] License-header linter + `pip-licenses` audit wired into CI
+- [ ] All 254+ tests pass; coverage ≥ 94% (no regression)
+
+**Documentation (mandatory review — every affected doc touched)**
+- [ ] `README.md` updated (architecture, install, modes, license badges)
+- [ ] `CLAUDE.md` updated (entry-point model, plugin discovery, new modes)
+- [ ] `LICENSING.md` explains dual-license model (AGPL core + Apache-2.0 SDK)
+- [ ] `LICENSE` file is AGPL-3.0 and `pip-licenses` shows zero AGPL-incompatible deps
+- [ ] SDK reference docs published (Protocols, lifecycle, examples)
+- [ ] `CONTRIBUTING.md` plugin-author guide (entry points, testing, publishing)
+- [ ] Operator guides: standalone tuning, distributed deployment, Helm values, Redpanda sizing, troubleshooting
+- [ ] PRD 005 and Tech Specs 001/002/003 cross-references reviewed and updated
+- [ ] FAQ on AGPL implications for users and plugin authors
 
 ## 12. Future Considerations
 

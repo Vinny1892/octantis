@@ -23,7 +23,7 @@ No linting or formatting tools are configured. Python 3.12+ required. Package ma
 ## Architecture & Data Flow
 
 ```
-OTel Collector → OTLP Receiver (gRPC/HTTP) → asyncio.Queue → TriggerFilter → FingerprintCooldown → EnvironmentDetector → LangGraph Workflow
+OTel Collector → OTLP Ingester (gRPC/HTTP) → asyncio.Queue → TriggerFilter → FingerprintCooldown → EnvironmentDetector → LangGraph Workflow
                                                                                                                               │
                                                                                                     investigate (ReAct loop via MCP tools)
                                                                                                                               │
@@ -48,11 +48,11 @@ The LangGraph workflow (`graph/workflow.py`) is a compiled `StateGraph` with 4 n
 
 ```
 src/octantis/
-├── main.py              # Entry point: wires pipeline + MCP configs + workflow, runs async loop
+├── main.py              # Entry point: discovers plugins via registry, wires pipeline + MCP, runs async loop
 ├── config.py            # All config via Pydantic BaseSettings sub-models, singleton `settings`
 ├── metrics.py           # Prometheus metrics + HTTP server
-├── receivers/
-│   ├── receiver.py      # OTLPReceiver — orchestrates gRPC + HTTP + asyncio.Queue
+├── receivers/           # TODO: rename to `ingesters/` (see openspec/changes/implement-plugin-architecture, Phase 2 Fork C=1)
+│   ├── receiver.py      # OTLP ingester orchestrator — gRPC + HTTP + asyncio.Queue
 │   ├── grpc_server.py   # gRPC servicer (MetricsService, LogsService, TraceService)
 │   ├── http_server.py   # aiohttp server (/v1/metrics, /v1/logs, /v1/traces)
 │   └── parser.py        # OTLP Protobuf/JSON → InfraEvent (includes counter normalization)
@@ -62,6 +62,13 @@ src/octantis/
 │   └── environment_detector.py # Platform detection: K8s / Docker / AWS
 ├── mcp_client/
 │   └── manager.py       # MCPClientManager — registry pattern with slot validation + retry
+├── plugins/
+│   ├── registry.py      # PluginRegistry — entry-point discovery, fixed load order, lifecycle
+│   └── builtins/
+│       ├── trigger_filter_plugin.py  # Processor adapter: TriggerFilter (priority 100)
+│       ├── cooldown_plugin.py        # Processor adapter: FingerprintCooldown (priority 200)
+│       ├── notifier_plugins.py       # Notifier adapters: Slack + Discord
+│       └── mcp_plugin.py             # MCP adapter: MCPClientManager
 ├── graph/
 │   ├── workflow.py      # LangGraph StateGraph definition, conditional edge
 │   ├── state.py         # AgentState TypedDict
@@ -99,6 +106,36 @@ src/octantis/
 - Investigator tests cover K8s, Docker, and AWS trigger contexts.
 - The `MCPClientManager` tests cover slot validation, retry success, and retry exhaustion.
 - `InvestigationResult.summary` is a `@property` that delegates to `resource.context_summary()`.
+
+## Plugin Architecture (Phase 1–2 landed)
+
+The `Plugin Registry` at `src/octantis/plugins/registry.py` discovers components
+via Python entry points and drives their lifecycle. The stable public contract
+for plugin authors lives in the separate Apache-2.0 package
+`packages/octantis-plugin-sdk/` (6 Protocols + shared types).
+
+- Entry-point groups (frozen once published): `octantis.ingesters`,
+  `octantis.storage`, `octantis.mcp`, `octantis.processors`, `octantis.notifiers`,
+  `octantis.ui`. (Octantis uses **"Ingester"** to distinguish its event-source
+  Protocol from the OTel Collector's "receiver" pipeline stage.)
+- Fixed load order: Ingesters → Storage → MCP → Processors → Notifiers → UI.
+  Processors further sorted by integer `priority` (lower first).
+- `main.py` wires **everything** via the registry — no direct component imports.
+  Ingesters, processors, MCP connector, and notifiers (Slack, Discord)
+  are all discovered via entry points and run through their Protocol adapters.
+- Built-in plugins (all registered in `pyproject.toml`; current code still uses
+  the legacy `octantis.receivers` group and a single `otlp` plugin — the split
+  into `otlp-grpc`/`otlp-http` Ingesters is tracked in the active change):
+  - `otlp` (ingester, will split into `otlp-grpc` + `otlp-http`) — `plugins/builtins/receiver_plugin.py`
+  - `trigger-filter` (priority 100) — `plugins/builtins/trigger_filter_plugin.py`
+  - `fingerprint-cooldown` (priority 200) — `plugins/builtins/cooldown_plugin.py`
+  - `mcp-client` (will split per server: grafana/k8s/docker/aws) — `plugins/builtins/mcp_plugin.py`
+  - `slack`, `discord` — `plugins/builtins/notifier_plugins.py`
+- **Ingester Protocol**: Event sources (OTLP gRPC/HTTP, pull scrapers, tailers). Methods: `setup()`, `teardown()`, `start()`, `stop()`, `events()`.
+- **Storage Protocol**: Persistence backends (future). Methods: `setup()`, `teardown()`, `save_investigation()`, `is_cooled_down()`.
+- Full contributor guide: `docs/plugins.md`. Tech Spec:
+  `docs/tech-specs/tech-spec-005-plugin-architecture.md`. Active change:
+  `openspec/changes/implement-plugin-architecture/`.
 
 ## Gotchas & Non-Obvious Details
 

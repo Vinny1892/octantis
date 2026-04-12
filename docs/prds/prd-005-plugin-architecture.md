@@ -121,7 +121,7 @@ Existing components (Slack notifier, Discord notifier, Grafana MCP connector, K8
 
 | Dependency | Type | Status | Impact if Blocked |
 |------------|------|--------|-------------------|
-| PRD 001: OTLP Direct Ingestion | Internal | Complete | OTLP receivers are the foundation — plugin architecture wraps them |
+| PRD 001: OTLP Direct Ingestion | Internal | Complete | OTLP gRPC/HTTP ingestion (refactored into `otlp-grpc` / `otlp-http` Ingester plugins here) is the event-source foundation this architecture wraps |
 | PRD 002: Grafana MCP Analysis | Internal | Complete | Grafana MCP connector is the first MCP plugin to refactor |
 | PRD 003: Multi-Platform Docker & AWS | Internal | Planned | Docker/AWS MCP connectors will be implemented as plugins on top of this architecture |
 | PRD 004: Helm Chart | Internal | Complete | Helm chart needs future updates to support plugin configuration — but not blocking this PRD |
@@ -142,7 +142,7 @@ Existing components (Slack notifier, Discord notifier, Grafana MCP connector, K8
 ## 9. References
 
 - [Business Model v2.0](/home/vinny/octantis-business-model-v2.pdf) — Defines open-core strategy, pricing tiers, 7 paid features, and product roadmap
-- [PRD 001: OTLP Direct Ingestion](prd-001-otlp-direct-ingestion.md) — OTLP receiver architecture that plugins wrap
+- [PRD 001: OTLP Direct Ingestion](prd-001-otlp-direct-ingestion.md) — OTLP ingestion architecture (exposed here as `otlp-grpc` / `otlp-http` Ingester plugins; "Ingester" is the Octantis-side term, distinct from OTel Collector's "receiver")
 - [PRD 002: Grafana MCP Analysis](prd-002-grafana-mcp-analysis.md) — MCP connection pattern refactored into MCPConnectorPlugin
 - [PRD 003: Multi-Platform Docker & AWS](prd-003-multi-platform-docker-aws.md) — Future MCP plugins built on this architecture
 - [PRD 004: Helm Chart](prd-004-helm-chart.md) — Deployment packaging that will need plugin config support

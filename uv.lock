@@ -1295,6 +1295,7 @@ dependencies = [
     { name = "langgraph" },
     { name = "litellm" },
     { name = "mcp" },
+    { name = "octantis-plugin-sdk" },
     { name = "opentelemetry-proto" },
     { name = "prometheus-client" },
     { name = "pydantic" },
@@ -1322,6 +1323,7 @@ requires-dist = [
     { name = "langgraph", specifier = ">=0.2.0" },
     { name = "litellm", specifier = ">=1.83.0" },
     { name = "mcp", extras = ["sse"], specifier = ">=1.0.0" },
+    { name = "octantis-plugin-sdk", editable = "packages/octantis-plugin-sdk" },
     { name = "opentelemetry-proto", specifier = ">=1.24.0" },
     { name = "prometheus-client", specifier = ">=0.21.0" },
     { name = "pydantic", specifier = ">=2.9.0" },
@@ -1338,6 +1340,20 @@ dev = [
     { name = "pytest-mock", specifier = ">=3.14.0" },
     { name = "ruff", specifier = ">=0.11.0" },
 ]
+
+[[package]]
+name = "octantis-plugin-sdk"
+version = "0.1.0"
+source = { editable = "packages/octantis-plugin-sdk" }
+dependencies = [
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "pydantic", specifier = ">=2.9.0" }]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=8.0.0" }]
 
 [[package]]
 name = "openai"
