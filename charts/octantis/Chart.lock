@@ -4,12 +4,12 @@ dependencies:
   version: 0.112.0
 - name: opentelemetry-operator
   repository: https://open-telemetry.github.io/opentelemetry-helm-charts
-  version: 0.74.3
+  version: 0.109.2
 - name: kube-prometheus-stack
   repository: https://prometheus-community.github.io/helm-charts
   version: 83.4.0
 - name: redpanda
   repository: https://charts.redpanda.com/
   version: 5.9.31
-digest: sha256:7ae9ec5e3b4b85e85c835fadb9c16b1287df4202491ca43c12cdf7fbbd178348
-generated: "2026-04-12T23:46:33.186184529-04:00"
+digest: sha256:66c06db779d36508b582473f9c01ddc85b1326979c4dbf7adb1e31090bf9ce57
+generated: "2026-04-13T15:00:53.87084437-04:00"

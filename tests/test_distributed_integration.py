@@ -299,7 +299,7 @@ async def test_idempotency_workflow_called_per_delivery(
         await consumer.start()
         try:
             async with asyncio.timeout(10.0):
-                async for msg in consumer:
+                async for _msg in consumer:
                     call_count += 1
                     if commit:
                         await consumer.commit()

@@ -23,7 +23,7 @@ dependencies:
     alias: otelCollector
 
   - name: opentelemetry-operator
-    version: "~0.74.0"
+    version: "~0.109.0"
     repository: https://open-telemetry.github.io/opentelemetry-helm-charts
     condition: otelOperator.enabled
     alias: otelOperator
