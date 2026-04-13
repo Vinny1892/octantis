@@ -43,6 +43,29 @@ jobs:
             done
           done
 
+      - name: Check release notes exist
+        run: |
+          if [ ! -f RELEASE_NOTES.md ]; then
+            echo "ERROR: RELEASE_NOTES.md not found. Create it before tagging."
+            exit 1
+          fi
+
+      - name: Update CHANGELOG.md
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: cliff.toml
+          args: --output CHANGELOG.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Commit updated CHANGELOG.md
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git commit -m "chore(changelog): update for ${{ github.ref_name }}" || true
+          git push
+
       - name: Package chart
         run: helm package charts/octantis/ -d .cr-release-packages/
 
@@ -54,16 +77,8 @@ jobs:
           OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           helm push .cr-release-packages/octantis-*.tgz oci://ghcr.io/${OWNER}/charts
 
-      - name: Generate changelog
-        uses: orhun/git-cliff-action@v4
-        with:
-          config: cliff.toml
-          args: --latest --strip header
-        env:
-          OUTPUT: CHANGELOG.md
-
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          body_path: CHANGELOG.md
+          body_path: RELEASE_NOTES.md
           files: .cr-release-packages/octantis-*.tgz

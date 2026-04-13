@@ -6,6 +6,7 @@
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 [![SDK License: Apache-2.0](https://img.shields.io/badge/SDK_License-Apache--2.0-green.svg)](packages/octantis-plugin-sdk/LICENSE)
+[![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/octantis)](https://artifacthub.io/packages/search?repo=octantis)
 
 Intelligent infrastructure monitoring agent for **Kubernetes, Docker, and AWS**. Receives metrics and logs via OTLP, uses an LLM to autonomously investigate and classify incidents, and notifies Slack/Discord with a concrete remediation plan.
 
