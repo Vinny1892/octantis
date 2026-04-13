@@ -43,8 +43,6 @@ Repository = "https://github.com/Vinny1892/octantis"
 Documentation = "https://github.com/Vinny1892/octantis#readme"
 "Bug Tracker" = "https://github.com/Vinny1892/octantis/issues"
 
-[tool.uv.sources]
-octantis-plugin-sdk = { path = "packages/octantis-plugin-sdk", editable = true }
 
 [project.scripts]
 octantis = "octantis.main:main"
