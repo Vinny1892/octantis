@@ -37,16 +37,16 @@
 
 ## 3. Phase 3 — Plan gating (JWT Ed25519 + PlanGatingEngine)
 
-- [ ] 3.1 Generate an Ed25519 keypair; commit the public key to `src/octantis/licensing/public_key.pem`; store the private key securely (offline)
-- [ ] 3.2 Implement JWT validator (PyJWT + cryptography) that verifies signature, `iss`, `iat`, `exp` offline
-- [ ] 3.3 Implement `PlanGatingEngine` with tier rules (free: 1 MCP / 1 notifier / 0 UI; pro: 3/3/0; enterprise: unlimited/unlimited/1)
-- [ ] 3.4 Wire gating between registry discovery and plugin `setup()` — reject before any external connection
-- [ ] 3.5 Emit actionable error logs (tier, limit, installed_count, plugin_names, remediation) without leaking JWT contents
-- [ ] 3.6 Handle missing `OCTANTIS_LICENSE_JWT` as free tier
-- [ ] 3.7 Add export of `octantis_plan_tier_info` and `octantis_plan_gating_violations_total` metrics
-- [ ] 3.8 Unit tests: valid JWTs (all three tiers), tampered JWT, expired JWT, missing JWT, unknown issuer, each tier limit edge case
-- [ ] 3.9 **Phase 3 test review**: confirm tests cover every documented gating scenario (not just happy path)
-- [ ] 3.10 **Phase 3 docs**: write `LICENSING.md` (tier matrix + FAQ), operator guide on obtaining and installing a license JWT
+- [x] 3.1 Generate an Ed25519 keypair; commit the public key to `src/octantis/licensing/public_key.pem`; store the private key securely (offline)
+- [x] 3.2 Implement JWT validator (PyJWT + cryptography) that verifies signature, `iss`, `iat`, `exp` offline
+- [x] 3.3 Implement `PlanGatingEngine` with tier rules (free: 1 MCP / 1 notifier / 0 UI; pro: 3/3/0; enterprise: unlimited/unlimited/1)
+- [x] 3.4 Wire gating between registry discovery and plugin `setup()` — reject before any external connection
+- [x] 3.5 Emit actionable error logs (tier, limit, installed_count, plugin_names, remediation) without leaking JWT contents
+- [x] 3.6 Handle missing `OCTANTIS_LICENSE_JWT` as free tier
+- [x] 3.7 Add export of `octantis_plan_tier_info` and `octantis_plan_gating_violations_total` metrics
+- [x] 3.8 Unit tests: valid JWTs (all three tiers), tampered JWT, expired JWT, missing JWT, unknown issuer, each tier limit edge case
+- [x] 3.9 **Phase 3 test review**: confirm tests cover every documented gating scenario (not just happy path)
+- [x] 3.10 **Phase 3 docs**: write `LICENSING.md` (tier matrix + FAQ), operator guide on obtaining and installing a license JWT
 - [ ] 3.11 **Phase 3 gate**: coverage ≥ 94%, CI green, docs review — only then close the phase
 
 ## 4. Phase 4 — Concurrent standalone runtime

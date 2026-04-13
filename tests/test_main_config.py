@@ -423,3 +423,51 @@ async def test_run_stop_event_breaks_loop():
         MockDetector.return_value = mock_detector
 
         await run()
+
+
+@pytest.mark.asyncio
+async def test_run_calls_gate_before_setup():
+    """registry.gate() must be called before registry.setup_all()."""
+    from octantis.main import run
+
+    event = _make_event()
+    mock_workflow = AsyncMock()
+    mock_workflow.ainvoke.return_value = {
+        "analysis": MagicMock(severity="LOW"),
+        "notifications_sent": [],
+        "investigation": MagicMock(queries_executed=[], mcp_degraded=False),
+    }
+    mock_registry = _make_registry([event])
+
+    call_order = []
+    original_gate = mock_registry.gate
+    original_setup = mock_registry.setup_all
+
+    def tracking_gate(tier):
+        call_order.append("gate")
+        return original_gate(tier)
+
+    def tracking_setup(cfg):
+        call_order.append("setup_all")
+        return original_setup(cfg)
+
+    mock_registry.gate = tracking_gate
+    mock_registry.setup_all = tracking_setup
+
+    with (
+        patch("octantis.main.settings", _mock_settings()),
+        patch("octantis.main._configure_logging"),
+        patch("octantis.main.PluginRegistry", return_value=mock_registry),
+        patch("octantis.main.build_workflow", return_value=mock_workflow),
+        patch("octantis.main.EnvironmentDetector") as MockDetector,
+        patch("octantis.main.resolve_tier"),
+        patch("octantis.main.PLAN_TIER_INFO"),
+    ):
+        mock_detector = MagicMock()
+        mock_detector.detect.return_value = MagicMock(
+            event_id="x", source="s", metrics=[], logs=[]
+        )
+        MockDetector.return_value = mock_detector
+        await run()
+
+    assert call_order.index("gate") < call_order.index("setup_all")

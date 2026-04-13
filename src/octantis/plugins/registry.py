@@ -159,6 +159,17 @@ class PluginRegistry:
         )
         return loaded
 
+    def gate(self, tier: Any) -> None:
+        """Enforce plan tier limits on the discovered plugin list.
+
+        Must be called after `discover()` and before `setup_all()`.
+        Raises `GatingViolationError` if any plugin type exceeds the tier limit.
+        """
+        from octantis.licensing.gating import PlanGatingEngine
+
+        engine = PlanGatingEngine(tier=tier)
+        engine.enforce(self._plugins)
+
     def setup_all(self, config: dict[str, dict[str, Any]] | None = None) -> None:
         """Invoke setup() on every discovered plugin in load order.
 

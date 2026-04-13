@@ -10,7 +10,9 @@ from octantis_plugin_sdk import Event as SDKEvent
 
 from octantis.config import settings
 from octantis.graph.workflow import build_workflow
+from octantis.licensing.validator import resolve_tier
 from octantis.mcp_client.aggregator import AggregatedMCPManager
+from octantis.metrics import PLAN_TIER_INFO
 from octantis.models.event import InfraEvent, LogRecord, MetricDataPoint, OTelResource
 from octantis.pipeline.environment_detector import EnvironmentDetector
 from octantis.plugins.registry import PluginRegistry, PluginType
@@ -144,6 +146,11 @@ async def run() -> None:
     # Plugin registry — discovers all built-in and third-party plugins
     registry = PluginRegistry()
     registry.discover()
+
+    # Plan gating — enforces tier limits before any plugin setup() or external connection
+    tier = resolve_tier()
+    PLAN_TIER_INFO.labels(tier=tier.value).set(1)
+    registry.gate(tier)
 
     pipeline_config = _build_pipeline_config()
     notifier_config = _build_notifier_config()

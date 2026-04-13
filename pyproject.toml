@@ -21,6 +21,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "pytest-cov>=7.1.0",
     "octantis-plugin-sdk",
+    "pyjwt[crypto]>=2.9.0",
 ]
 
 [tool.uv.sources]

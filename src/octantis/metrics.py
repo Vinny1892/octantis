@@ -1,6 +1,6 @@
 """Internal Prometheus metrics for Octantis."""
 
-from prometheus_client import Counter, Histogram, start_http_server
+from prometheus_client import Counter, Gauge, Histogram, start_http_server
 
 # Investigation
 INVESTIGATION_DURATION = Histogram(
@@ -51,6 +51,20 @@ LLM_TOKENS_TOTAL = Counter(
     "octantis_llm_tokens_total",
     "Total LLM tokens consumed (input + output)",
     ["node"],  # investigate, analyze, plan
+)
+
+
+# Plan / licensing
+PLAN_TIER_INFO = Gauge(
+    "octantis_plan_tier_info",
+    "Active plan tier (label carries the tier name, value is always 1)",
+    ["tier"],  # free, pro, enterprise
+)
+
+PLAN_GATING_VIOLATIONS = Counter(
+    "octantis_plan_gating_violations_total",
+    "Number of plugin types blocked by plan gating since startup",
+    ["plugin_type"],  # mcp, notifiers, ui
 )
 
 
