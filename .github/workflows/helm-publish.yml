@@ -50,7 +50,9 @@ jobs:
         run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
 
       - name: Push to ghcr.io
-        run: helm push .cr-release-packages/octantis-*.tgz oci://ghcr.io/${{ github.repository_owner }}/charts
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          helm push .cr-release-packages/octantis-*.tgz oci://ghcr.io/${OWNER}/charts
 
       - name: Generate changelog
         uses: orhun/git-cliff-action@v4
