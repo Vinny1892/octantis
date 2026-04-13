@@ -51,24 +51,25 @@ src/octantis/
 ├── main.py              # Entry point: discovers plugins via registry, wires pipeline + MCP, runs async loop
 ├── config.py            # All config via Pydantic BaseSettings sub-models, singleton `settings`
 ├── metrics.py           # Prometheus metrics + HTTP server
-├── receivers/           # TODO: rename to `ingesters/` (see openspec/changes/implement-plugin-architecture, Phase 2 Fork C=1)
-│   ├── receiver.py      # OTLP ingester orchestrator — gRPC + HTTP + asyncio.Queue
-│   ├── grpc_server.py   # gRPC servicer (MetricsService, LogsService, TraceService)
-│   ├── http_server.py   # aiohttp server (/v1/metrics, /v1/logs, /v1/traces)
-│   └── parser.py        # OTLP Protobuf/JSON → InfraEvent (includes counter normalization)
+├── receivers/           # Transport layer (shared by ingester plugins)
+│   ├── grpc_server.py   # gRPC servicer (MetricsService, LogsService, TraceService) → SDK Event
+│   ├── http_server.py   # aiohttp server (/v1/metrics, /v1/logs, /v1/traces) → SDK Event
+│   └── parser.py        # OTLP Protobuf/JSON → SDK Event (includes counter normalization)
 ├── pipeline/
 │   ├── trigger_filter.py       # Rule-based filter chain (Protocol-based extensibility)
 │   ├── cooldown.py             # Fingerprint-based dedup with cooldown
 │   └── environment_detector.py # Platform detection: K8s / Docker / AWS
 ├── mcp_client/
-│   └── manager.py       # MCPClientManager — registry pattern with slot validation + retry
+│   ├── manager.py       # MCPClientManager — single-server connect + retry
+│   └── aggregator.py    # AggregatedMCPManager — facade over multiple per-server MCPConnectors
 ├── plugins/
 │   ├── registry.py      # PluginRegistry — entry-point discovery, fixed load order, lifecycle
 │   └── builtins/
+│       ├── ingester_plugins.py       # Ingester adapters: OTLPGrpcIngester + OTLPHttpIngester
 │       ├── trigger_filter_plugin.py  # Processor adapter: TriggerFilter (priority 100)
 │       ├── cooldown_plugin.py        # Processor adapter: FingerprintCooldown (priority 200)
 │       ├── notifier_plugins.py       # Notifier adapters: Slack + Discord
-│       └── mcp_plugin.py             # MCP adapter: MCPClientManager
+│       └── mcp_plugins.py            # MCPConnector adapters: Grafana, K8s, Docker, AWS
 ├── graph/
 │   ├── workflow.py      # LangGraph StateGraph definition, conditional edge
 │   ├── state.py         # AgentState TypedDict
@@ -123,13 +124,11 @@ for plugin authors lives in the separate Apache-2.0 package
 - `main.py` wires **everything** via the registry — no direct component imports.
   Ingesters, processors, MCP connector, and notifiers (Slack, Discord)
   are all discovered via entry points and run through their Protocol adapters.
-- Built-in plugins (all registered in `pyproject.toml`; current code still uses
-  the legacy `octantis.receivers` group and a single `otlp` plugin — the split
-  into `otlp-grpc`/`otlp-http` Ingesters is tracked in the active change):
-  - `otlp` (ingester, will split into `otlp-grpc` + `otlp-http`) — `plugins/builtins/receiver_plugin.py`
+- Built-in plugins (all registered in `pyproject.toml`):
+  - `otlp-grpc`, `otlp-http` (ingesters) — `plugins/builtins/ingester_plugins.py`
   - `trigger-filter` (priority 100) — `plugins/builtins/trigger_filter_plugin.py`
   - `fingerprint-cooldown` (priority 200) — `plugins/builtins/cooldown_plugin.py`
-  - `mcp-client` (will split per server: grafana/k8s/docker/aws) — `plugins/builtins/mcp_plugin.py`
+  - `grafana-mcp`, `k8s-mcp`, `docker-mcp`, `aws-mcp` — `plugins/builtins/mcp_plugins.py`
   - `slack`, `discord` — `plugins/builtins/notifier_plugins.py`
 - **Ingester Protocol**: Event sources (OTLP gRPC/HTTP, pull scrapers, tailers). Methods: `setup()`, `teardown()`, `start()`, `stop()`, `events()`.
 - **Storage Protocol**: Persistence backends (future). Methods: `setup()`, `teardown()`, `save_investigation()`, `is_cooled_down()`.
@@ -142,7 +141,8 @@ for plugin authors lives in the separate Apache-2.0 package
 - **`_fingerprint` uses `extra` dict**: Reads K8s attributes from `resource.extra` (before environment detection), falling back to `event.source` for non-K8s events.
 - **`EnvironmentDetector` creates new events**: Returns `event.model_copy(update={"resource": promoted})` — does not mutate the original.
 - **EKS dual-attribute priority**: K8s detection takes priority over AWS (rule 2 before rule 4). Use `OCTANTIS_PLATFORM=aws` to override for EKS if needed.
-- **Counter normalization**: Parser normalizes known Node Exporter counters (e.g., `node_cpu_seconds_total`) to percentages before creating `MetricDataPoint`. Unknown counters pass through unchanged.
+- **Counter normalization**: Parser normalizes known Node Exporter counters (e.g., `node_cpu_seconds_total`) to percentages before building the SDK Event metrics list. Unknown counters pass through unchanged.
+- **SDK Event boundary**: `OTLPParser` emits `octantis_plugin_sdk.Event` (flat dicts for `resource`, `metrics`, `logs`). The internal workflow layer uses `InfraEvent` with typed `OTelResource`; `main.py` converts via `_sdk_to_infra_event()` after the processor chain.
 - **Slot validation is immediate**: `MCPClientManager.validate_slots()` runs at the start of `connect()`, before any network call. Zero MCPs or duplicate slots raise `SlotValidationError`.
 - **Retry clears degraded state**: If a connection fails then succeeds on retry, the server is removed from `_degraded_servers`.
 - **`MCPQueryRecord.datasource`** accepts `"promql"`, `"logql"`, `"k8s"`, `"docker"`, and `"aws"` — classified by tool name pattern in `_classify_datasource()`.

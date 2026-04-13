@@ -18,7 +18,7 @@ from octantis.plugins.registry import (
 
 # ---- plugin test doubles ----------------------------------------------------
 
-class FakeReceiver:
+class FakeIngester:
     def __init__(self) -> None:
         self.calls: list[str] = []
 
@@ -143,13 +143,13 @@ def _patch_entry_points(monkeypatch: pytest.MonkeyPatch, mapping: dict[str, list
 
 def test_discovers_plugin_from_entry_point(monkeypatch):
     _patch_entry_points(monkeypatch, {
-        "octantis.receivers": [_FakeEP("otlp-grpc", FakeReceiver)],
+        "octantis.ingesters": [_FakeEP("otlp-grpc", FakeIngester)],
     })
     reg = PluginRegistry()
     loaded = reg.discover()
     assert len(loaded) == 1
     assert loaded[0].name == "otlp-grpc"
-    assert loaded[0].type is PluginType.RECEIVER
+    assert loaded[0].type is PluginType.INGESTER
     assert loaded[0].source_package == "test-pkg"
     assert loaded[0].version == "9.9.9"
 
@@ -158,12 +158,12 @@ def test_load_order_storage_before_mcp_before_processor(monkeypatch):
     _patch_entry_points(monkeypatch, {
         "octantis.processors": [_FakeEP("proc", FakeProcessorLow)],
         "octantis.mcp": [_FakeEP("mcp", FakeMCP)],
-        "octantis.receivers": [_FakeEP("recv", FakeReceiver)],
+        "octantis.ingesters": [_FakeEP("recv", FakeIngester)],
     })
     reg = PluginRegistry()
     loaded = reg.discover()
     types = [p.type for p in loaded]
-    assert types == [PluginType.RECEIVER, PluginType.MCP, PluginType.PROCESSOR]
+    assert types == [PluginType.INGESTER, PluginType.MCP, PluginType.PROCESSOR]
 
 
 def test_processors_sorted_by_priority_ascending(monkeypatch):
@@ -196,13 +196,13 @@ def test_duplicate_name_in_same_group_raises(monkeypatch):
 
 def test_same_name_across_groups_is_allowed(monkeypatch):
     _patch_entry_points(monkeypatch, {
-        "octantis.receivers": [_FakeEP("alpha", FakeReceiver)],
+        "octantis.ingesters": [_FakeEP("alpha", FakeIngester)],
         "octantis.notifiers": [_FakeEP("alpha", FakeNotifier)],
     })
     reg = PluginRegistry()
     loaded = reg.discover()
     assert {p.name for p in loaded} == {"alpha"}
-    assert {p.type for p in loaded} == {PluginType.RECEIVER, PluginType.NOTIFIER}
+    assert {p.type for p in loaded} == {PluginType.INGESTER, PluginType.NOTIFIER}
 
 
 def test_non_conforming_plugin_rejected(monkeypatch):
@@ -239,7 +239,7 @@ def test_setup_called_in_load_order(monkeypatch):
 
     _patch_entry_points(monkeypatch, {
         "octantis.notifiers": [_FakeEP("n", N)],
-        "octantis.receivers": [_FakeEP("r", R)],
+        "octantis.ingesters": [_FakeEP("r", R)],
         "octantis.mcp": [_FakeEP("m", M)],
     })
     reg = PluginRegistry()
@@ -271,7 +271,7 @@ def test_teardown_in_reverse_load_order(monkeypatch):
         async def send(self, r): ...
 
     _patch_entry_points(monkeypatch, {
-        "octantis.receivers": [_FakeEP("r", R)],
+        "octantis.ingesters": [_FakeEP("r", R)],
         "octantis.mcp": [_FakeEP("m", M)],
         "octantis.notifiers": [_FakeEP("n", N)],
     })
@@ -316,12 +316,12 @@ def test_setup_failure_propagates(monkeypatch):
 
 def test_plugins_filter_by_type(monkeypatch):
     _patch_entry_points(monkeypatch, {
-        "octantis.receivers": [_FakeEP("r", FakeReceiver)],
+        "octantis.ingesters": [_FakeEP("r", FakeIngester)],
         "octantis.notifiers": [_FakeEP("n", FakeNotifier)],
     })
     reg = PluginRegistry()
     reg.discover()
-    assert [p.name for p in reg.plugins(PluginType.RECEIVER)] == ["r"]
+    assert [p.name for p in reg.plugins(PluginType.INGESTER)] == ["r"]
     assert [p.name for p in reg.plugins(PluginType.NOTIFIER)] == ["n"]
     assert [p.name for p in reg.plugins()] == ["r", "n"]
 

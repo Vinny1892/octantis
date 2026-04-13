@@ -3,7 +3,7 @@
 
 from .action_plan import ActionPlan, ActionStep, StepType
 from .analysis import Severity, SeverityAnalysis
-from .protocols import MCPConnector, Notifier, Processor, Receiver, Storage, UIProvider
+from .protocols import Ingester, MCPConnector, Notifier, Processor, Storage, UIProvider
 from .types import (
     Event,
     InvestigationResult,
@@ -18,13 +18,13 @@ __all__ = [
     "ActionPlan",
     "ActionStep",
     "Event",
+    "Ingester",
     "InvestigationResult",
     "MCPConnector",
     "Notifier",
     "PluginMetadata",
     "PluginTier",
     "Processor",
-    "Receiver",
     "Severity",
     "SeverityAnalysis",
     "StepType",

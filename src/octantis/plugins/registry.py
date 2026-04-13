@@ -13,7 +13,7 @@ from importlib.metadata import EntryPoint, entry_points
 from typing import Any
 
 import structlog
-from octantis_plugin_sdk import MCPConnector, Notifier, Processor, Receiver, Storage, UIProvider
+from octantis_plugin_sdk import Ingester, MCPConnector, Notifier, Processor, Storage, UIProvider
 
 logger = structlog.get_logger(__name__)
 
@@ -21,7 +21,7 @@ logger = structlog.get_logger(__name__)
 class PluginType(str, Enum):
     """The six plugin types, declared in the fixed load order."""
 
-    RECEIVER = "receivers"
+    INGESTER = "ingesters"
     STORAGE = "storage"
     MCP = "mcp"
     PROCESSOR = "processors"
@@ -30,7 +30,7 @@ class PluginType(str, Enum):
 
 
 _LOAD_ORDER: tuple[PluginType, ...] = (
-    PluginType.RECEIVER,
+    PluginType.INGESTER,
     PluginType.STORAGE,
     PluginType.MCP,
     PluginType.PROCESSOR,
@@ -39,7 +39,7 @@ _LOAD_ORDER: tuple[PluginType, ...] = (
 )
 
 _ENTRY_POINT_GROUP: dict[PluginType, str] = {
-    PluginType.RECEIVER: "octantis.receivers",
+    PluginType.INGESTER: "octantis.ingesters",
     PluginType.STORAGE: "octantis.storage",
     PluginType.MCP: "octantis.mcp",
     PluginType.PROCESSOR: "octantis.processors",
@@ -48,7 +48,7 @@ _ENTRY_POINT_GROUP: dict[PluginType, str] = {
 }
 
 _PROTOCOL_BY_TYPE: dict[PluginType, type] = {
-    PluginType.RECEIVER: Receiver,
+    PluginType.INGESTER: Ingester,
     PluginType.STORAGE: Storage,
     PluginType.MCP: MCPConnector,
     PluginType.PROCESSOR: Processor,

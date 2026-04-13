@@ -13,7 +13,8 @@ from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import (
     ExportMetricsServiceRequest,
 )
 
-from octantis.models.event import InfraEvent
+from octantis_plugin_sdk import Event as SDKEvent
+
 from octantis.receivers.parser import OTLPParser
 
 log = structlog.get_logger(__name__)
@@ -21,7 +22,7 @@ log = structlog.get_logger(__name__)
 _ALLOWED_CONTENT_TYPES = {"application/json", "application/x-protobuf"}
 
 
-def _create_routes(queue: asyncio.Queue[InfraEvent], parser: OTLPParser) -> web.Application:
+def _create_routes(queue: asyncio.Queue[SDKEvent], parser: OTLPParser) -> web.Application:
     """Build the aiohttp application with OTLP routes."""
 
     async def handle_metrics(request: web.Request) -> web.Response:
@@ -39,7 +40,7 @@ def _create_routes(queue: asyncio.Queue[InfraEvent], parser: OTLPParser) -> web.
                     path="/v1/metrics",
                     content_type=content_type,
                     event_type=event.event_type,
-                    service_name=event.resource.service_name,
+                    service_name=event.resource.get("service.name"),
                 )
         except Exception as exc:
             log.error(
@@ -62,7 +63,7 @@ def _create_routes(queue: asyncio.Queue[InfraEvent], parser: OTLPParser) -> web.
                     path="/v1/logs",
                     content_type=content_type,
                     event_type=event.event_type,
-                    service_name=event.resource.service_name,
+                    service_name=event.resource.get("service.name"),
                 )
         except Exception as exc:
             log.error(
@@ -89,7 +90,7 @@ def _parse_signal(
     content_type: str,
     signal: str,
     parser: OTLPParser,
-) -> InfraEvent | None:
+) -> SDKEvent | None:
     """Parse an OTLP payload based on signal type and content type."""
     if signal == "metrics":
         if content_type == "application/x-protobuf":
@@ -110,7 +111,7 @@ def _parse_signal(
     return None
 
 
-def _enqueue(queue: asyncio.Queue[InfraEvent], event: InfraEvent) -> None:
+def _enqueue(queue: asyncio.Queue[SDKEvent], event: SDKEvent) -> None:
     """Put event on queue, drop if full."""
     try:
         queue.put_nowait(event)

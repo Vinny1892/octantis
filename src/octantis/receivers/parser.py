@@ -1,19 +1,16 @@
-"""OTLP payload parser — converts Protobuf and JSON payloads to InfraEvent."""
+"""OTLP payload parser — converts Protobuf and JSON payloads to SDK Event.
+
+All protobuf imports are deferred inside methods so this module is importable
+without triggering opentelemetry-proto side effects at import time.
+"""
+
+from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
 from typing import Any
 
 import structlog
-from opentelemetry.proto.collector.logs.v1.logs_service_pb2 import (
-    ExportLogsServiceRequest,
-)
-from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import (
-    ExportMetricsServiceRequest,
-)
-from opentelemetry.proto.common.v1.common_pb2 import AnyValue, KeyValue
-
-from octantis.models.event import InfraEvent, LogRecord, MetricDataPoint, OTelResource
+from octantis_plugin_sdk import Event as SDKEvent
 
 log = structlog.get_logger(__name__)
 
@@ -24,7 +21,7 @@ _RESOURCE_ATTR_MAP: dict[str, str] = {
 }
 
 
-def _any_value_to_python(av: AnyValue) -> Any:
+def _any_value_to_python(av: Any) -> Any:
     """Extract a Python value from an OTLP AnyValue."""
     kind = av.WhichOneof("value")
     if kind == "string_value":
@@ -40,26 +37,21 @@ def _any_value_to_python(av: AnyValue) -> Any:
     return str(av)
 
 
-def _extract_resource(attributes: list[KeyValue]) -> OTelResource:
-    """Map OTLP resource attributes to OTelResource."""
-    known: dict[str, Any] = {}
-    extra: dict[str, Any] = {}
-
+def _extract_resource_dict(attributes: Any) -> dict[str, Any]:
+    """Map OTLP resource attributes to a flat dict (all keys preserved)."""
+    result: dict[str, Any] = {}
     for kv in attributes:
-        value = _any_value_to_python(kv.value)
-        field = _RESOURCE_ATTR_MAP.get(kv.key)
-        if field:
-            known[field] = value
-        extra[kv.key] = value
-
-    return OTelResource(**known, extra=extra)
+        result[kv.key] = _any_value_to_python(kv.value)
+    return result
 
 
-def _nano_to_datetime(time_unix_nano: int) -> datetime:
-    """Convert OTLP nanosecond timestamp to datetime."""
+def _nano_to_iso(time_unix_nano: int) -> str:
+    """Convert OTLP nanosecond timestamp to ISO 8601 string."""
+    from datetime import UTC, datetime
+
     if time_unix_nano == 0:
-        return datetime.now(tz=UTC)
-    return datetime.fromtimestamp(time_unix_nano / 1e9, tz=UTC)
+        return datetime.now(tz=UTC).isoformat()
+    return datetime.fromtimestamp(time_unix_nano / 1e9, tz=UTC).isoformat()
 
 
 _NODE_CPU_NORMALIZATION: set[str] = {"node_cpu_seconds_total"}
@@ -81,52 +73,60 @@ def _normalize_metric(name: str, value: float) -> float:
 
 
 class OTLPParser:
-    """Parses OTLP Protobuf and JSON payloads into InfraEvent."""
+    """Parses OTLP Protobuf and JSON payloads into SDK Event dicts."""
 
-    def parse_metrics_proto(self, request: ExportMetricsServiceRequest) -> InfraEvent | None:
+    def parse_metrics_proto(self, request: Any) -> SDKEvent | None:
         """Parse an ExportMetricsServiceRequest Protobuf message."""
         try:
             return self._build_metrics_event(request)
         except Exception:
             return None
 
-    def parse_logs_proto(self, request: ExportLogsServiceRequest) -> InfraEvent | None:
+    def parse_logs_proto(self, request: Any) -> SDKEvent | None:
         """Parse an ExportLogsServiceRequest Protobuf message."""
         try:
             return self._build_logs_event(request)
         except Exception:
             return None
 
-    def parse_metrics_json(self, data: dict[str, Any]) -> InfraEvent | None:
+    def parse_metrics_json(self, data: dict[str, Any]) -> SDKEvent | None:
         """Parse an OTLP JSON metrics payload (resourceMetrics)."""
         try:
-            request = ExportMetricsServiceRequest()
             from google.protobuf.json_format import ParseDict
+            from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import (
+                ExportMetricsServiceRequest,
+            )
 
+            request = ExportMetricsServiceRequest()
             ParseDict(data, request)
             return self._build_metrics_event(request)
         except Exception:
             return None
 
-    def parse_logs_json(self, data: dict[str, Any]) -> InfraEvent | None:
+    def parse_logs_json(self, data: dict[str, Any]) -> SDKEvent | None:
         """Parse an OTLP JSON logs payload (resourceLogs)."""
         try:
-            request = ExportLogsServiceRequest()
             from google.protobuf.json_format import ParseDict
+            from opentelemetry.proto.collector.logs.v1.logs_service_pb2 import (
+                ExportLogsServiceRequest,
+            )
 
+            request = ExportLogsServiceRequest()
             ParseDict(data, request)
             return self._build_logs_event(request)
         except Exception:
             return None
 
-    def _build_metrics_event(self, request: ExportMetricsServiceRequest) -> InfraEvent:
-        """Build an InfraEvent from a metrics request."""
-        resource = OTelResource()
-        metrics: list[MetricDataPoint] = []
+    def _build_metrics_event(self, request: Any) -> SDKEvent:
+        """Build an SDK Event from a metrics request."""
+        from google.protobuf.json_format import MessageToDict
+
+        resource_dict: dict[str, Any] = {}
+        metrics: list[dict[str, Any]] = []
         raw_payload: dict[str, Any] = {}
 
         for rm in request.resource_metrics:
-            resource = _extract_resource(list(rm.resource.attributes))
+            resource_dict = _extract_resource_dict(list(rm.resource.attributes))
             for sm in rm.scope_metrics:
                 for m in sm.metrics:
                     name = m.name
@@ -141,40 +141,40 @@ class OTLPParser:
                         value = dp.as_double if dp.as_double != 0.0 else float(dp.as_int)
                         value = _normalize_metric(name, value)
                         metrics.append(
-                            MetricDataPoint(
-                                name=name,
-                                value=value,
-                                unit=unit,
-                                timestamp=_nano_to_datetime(dp.time_unix_nano),
-                            )
+                            {
+                                "name": name,
+                                "value": value,
+                                "unit": unit,
+                                "timestamp": _nano_to_iso(dp.time_unix_nano),
+                            }
                         )
 
         event_type = "metric" if metrics else "unknown"
         try:
-            from google.protobuf.json_format import MessageToDict
-
             raw_payload = MessageToDict(request)
         except Exception:
             pass
 
-        return InfraEvent(
+        return SDKEvent(
             event_id=str(uuid.uuid4()),
             event_type=event_type,
-            source=resource.service_name or "unknown",
-            resource=resource,
+            source=resource_dict.get("service.name") or "unknown",
+            resource=resource_dict,
             metrics=metrics,
             logs=[],
             raw_payload=raw_payload,
         )
 
-    def _build_logs_event(self, request: ExportLogsServiceRequest) -> InfraEvent:
-        """Build an InfraEvent from a logs request."""
-        resource = OTelResource()
-        logs: list[LogRecord] = []
+    def _build_logs_event(self, request: Any) -> SDKEvent:
+        """Build an SDK Event from a logs request."""
+        from google.protobuf.json_format import MessageToDict
+
+        resource_dict: dict[str, Any] = {}
+        logs: list[dict[str, Any]] = []
         raw_payload: dict[str, Any] = {}
 
         for rl in request.resource_logs:
-            resource = _extract_resource(list(rl.resource.attributes))
+            resource_dict = _extract_resource_dict(list(rl.resource.attributes))
             for sl in rl.scope_logs:
                 for lr in sl.log_records:
                     body = ""
@@ -184,27 +184,25 @@ class OTLPParser:
                         body = str(lr.body)
 
                     logs.append(
-                        LogRecord(
-                            body=body,
-                            severity_text=lr.severity_text or None,
-                            severity_number=lr.severity_number or None,
-                            timestamp=_nano_to_datetime(lr.time_unix_nano),
-                        )
+                        {
+                            "body": body,
+                            "severity_text": lr.severity_text or None,
+                            "severity_number": lr.severity_number or None,
+                            "timestamp": _nano_to_iso(lr.time_unix_nano),
+                        }
                     )
 
         event_type = "log" if logs else "unknown"
         try:
-            from google.protobuf.json_format import MessageToDict
-
             raw_payload = MessageToDict(request)
         except Exception:
             pass
 
-        return InfraEvent(
+        return SDKEvent(
             event_id=str(uuid.uuid4()),
             event_type=event_type,
-            source=resource.service_name or "unknown",
-            resource=resource,
+            source=resource_dict.get("service.name") or "unknown",
+            resource=resource_dict,
             metrics=[],
             logs=logs,
             raw_payload=raw_payload,

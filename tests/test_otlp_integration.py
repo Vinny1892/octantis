@@ -63,7 +63,7 @@ async def test_grpc_round_trip(receiver):
     # Verify event reached queue
     event = await asyncio.wait_for(recv._queue.get(), timeout=2.0)
     assert event.event_type == "metric"
-    assert event.resource.service_name == "k8s-app"
+    assert event.resource.get("service.name") == "k8s-app"
     assert len(event.metrics) == 3
 
     await channel.close()
@@ -81,7 +81,7 @@ async def test_http_round_trip(receiver):
 
     event = await asyncio.wait_for(recv._queue.get(), timeout=2.0)
     assert event.event_type == "metric"
-    assert event.resource.service_name == "k8s-app"
+    assert event.resource.get("service.name") == "k8s-app"
 
 
 async def test_http_404_unknown_path(receiver):

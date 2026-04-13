@@ -28,7 +28,8 @@ from opentelemetry.proto.collector.trace.v1.trace_service_pb2_grpc import (
     add_TraceServiceServicer_to_server,
 )
 
-from octantis.models.event import InfraEvent
+from octantis_plugin_sdk import Event as SDKEvent
+
 from octantis.receivers.parser import OTLPParser
 
 log = structlog.get_logger(__name__)
@@ -37,7 +38,7 @@ log = structlog.get_logger(__name__)
 class OTLPGrpcServicer(MetricsServiceServicer, LogsServiceServicer, TraceServiceServicer):
     """Unified gRPC servicer for all OTLP signal types."""
 
-    def __init__(self, queue: asyncio.Queue[InfraEvent], parser: OTLPParser) -> None:
+    def __init__(self, queue: asyncio.Queue[SDKEvent], parser: OTLPParser) -> None:
         self._queue = queue
         self._parser = parser
 
@@ -60,7 +61,7 @@ class OTLPGrpcServicer(MetricsServiceServicer, LogsServiceServicer, TraceService
                 log.debug(
                     "otlp.grpc.received",
                     event_type=event.event_type,
-                    service_name=event.resource.service_name,
+                    service_name=event.resource.get("service.name"),
                     metrics_count=len(event.metrics),
                     logs_count=len(event.logs),
                 )
@@ -78,7 +79,7 @@ class OTLPGrpcServicer(MetricsServiceServicer, LogsServiceServicer, TraceService
                 log.debug(
                     "otlp.grpc.received",
                     event_type=event.event_type,
-                    service_name=event.resource.service_name,
+                    service_name=event.resource.get("service.name"),
                     metrics_count=len(event.metrics),
                     logs_count=len(event.logs),
                 )
@@ -92,7 +93,7 @@ class OTLPGrpcServicer(MetricsServiceServicer, LogsServiceServicer, TraceService
         log.debug("otlp.trace.ignored", transport="grpc")
         return ExportTraceServiceResponse()
 
-    def _enqueue(self, event: InfraEvent, transport: str) -> None:
+    def _enqueue(self, event: SDKEvent, transport: str) -> None:
         try:
             self._queue.put_nowait(event)
         except asyncio.QueueFull:
@@ -100,7 +101,7 @@ class OTLPGrpcServicer(MetricsServiceServicer, LogsServiceServicer, TraceService
 
 
 async def create_grpc_server(
-    queue: asyncio.Queue[InfraEvent],
+    queue: asyncio.Queue[SDKEvent],
     parser: OTLPParser,
     port: int,
 ) -> grpc.aio.Server:

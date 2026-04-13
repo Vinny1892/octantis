@@ -19,20 +19,20 @@
 
 ## 2. Phase 2 — Refactor built-in components to Protocols + entry points
 
-- [ ] 2.1 Split OTLP gRPC into its own `Ingester` plugin (`otlp-grpc-ingester`), register under `octantis.ingesters` (Fork C=1: per-transport plugin, SRP)
-- [ ] 2.2 Split OTLP HTTP into its own `Ingester` plugin (`otlp-http-ingester`), register under `octantis.ingesters` (Fork C=1: per-transport plugin, SRP)
-- [ ] 2.3 Refactor `otlp-ingester-orchestrator` to consume ingesters from the registry (no direct imports); merge events from multiple Ingester plugins into the pipeline
-- [ ] 2.4 Refactor `otlp-parser` to emit SDK `Event` (keep module importable without runtime side effects)
+- [x] 2.1 Split OTLP gRPC into its own `Ingester` plugin (`otlp-grpc-ingester`), register under `octantis.ingesters` (Fork C=1: per-transport plugin, SRP)
+- [x] 2.2 Split OTLP HTTP into its own `Ingester` plugin (`otlp-http-ingester`), register under `octantis.ingesters` (Fork C=1: per-transport plugin, SRP)
+- [x] 2.3 Refactor `otlp-ingester-orchestrator` to consume ingesters from the registry (no direct imports); merge events from multiple Ingester plugins into the pipeline
+- [x] 2.4 Refactor `otlp-parser` to emit SDK `Event` (keep module importable without runtime side effects)
 - [x] 2.5 Split `MCPClientManager` into per-server MCPConnector plugins: `grafana-mcp`, `k8s-mcp`, `docker-mcp`, `aws-mcp`, each registered under `octantis.mcp` (Fork B=1: one connector per server, SRP)
 - [x] 2.6 Refactor `trigger-filter` to implement `Processor` with priority=100, register under `octantis.processors`
 - [x] 2.7 Refactor `fingerprint-cooldown` to implement `Processor` with priority=200, register under `octantis.processors`
 - [x] 2.8 Refactor notifiers to implement `Notifier`, register under `octantis.notifiers`
-- [ ] 2.9 Strip all direct component imports from `main.py`; wire everything via the registry (depends on 2.1/2.2/2.5)
-- [ ] 2.10 Update `pyproject.toml` with all entry-point declarations aligned to the split plugins (per-transport Ingesters + per-server MCPConnectors)
-- [ ] 2.11 **Phase 2 test review** (mandatory, per-component): for each refactored module, re-read its tests and adjust them to exercise the Protocol boundary — not just make the suite green
-- [ ] 2.12 Run the full test suite and verify 333+ tests pass with coverage ≥ 94%
+- [x] 2.9 Strip all direct component imports from `main.py`; wire everything via the registry (depends on 2.1/2.2/2.5)
+- [x] 2.10 Update `pyproject.toml` with all entry-point declarations aligned to the split plugins (per-transport Ingesters + per-server MCPConnectors)
+- [x] 2.11 **Phase 2 test review** (mandatory, per-component): for each refactored module, re-read its tests and adjust them to exercise the Protocol boundary — not just make the suite green
+- [x] 2.12 Run the full test suite and verify 333+ tests pass with coverage ≥ 94%
 - [ ] 2.13 Manual end-to-end smoke: send OTLP events → investigation runs → notifier fires, identical to pre-refactor behavior
-- [ ] 2.14 **Phase 2 docs**: update architecture diagrams, component inventory, `AGENTS.md` (entry-point model), specs updated (Ingester Protocol + per-server MCP)
+- [x] 2.14 **Phase 2 docs**: update architecture diagrams, component inventory, `AGENTS.md` (entry-point model), specs updated (Ingester Protocol + per-server MCP)
 - [ ] 2.15 **Phase 2 gate**: all reviews checked off, CI green, manual smoke passing — only then close the phase
 
 ## 3. Phase 3 — Plan gating (JWT Ed25519 + PlanGatingEngine)

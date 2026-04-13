@@ -138,14 +138,17 @@ def _mock_settings():
 
 
 def _make_event():
-    from octantis.models.event import InfraEvent, K8sResource, MetricDataPoint
+    from octantis_plugin_sdk import Event as SDKEvent
 
-    return InfraEvent(
+    return SDKEvent(
         event_id="run-001",
         event_type="metric",
         source="api-server",
-        resource=K8sResource(service_name="api-server", k8s_namespace="prod"),
-        metrics=[MetricDataPoint(name="cpu_usage", value=95.0)],
+        resource={
+            "service.name": "api-server",
+            "k8s.namespace.name": "prod",
+        },
+        metrics=[{"name": "cpu_usage", "value": 95.0}],
     )
 
 
@@ -186,7 +189,7 @@ def _make_registry(events_list=None, filter_pass=True, cooldown_pass=True):
     mock_receiver_instance.events.return_value = _events_from_list(events_list or [])
 
     receiver_plugin = LoadedPlugin(
-        name="otlp", type=PluginType.RECEIVER,
+        name="otlp", type=PluginType.INGESTER,
         instance=mock_receiver_instance, source_package="octantis", version="0.1.0", priority=0,
     )
 
@@ -194,7 +197,7 @@ def _make_registry(events_list=None, filter_pass=True, cooldown_pass=True):
     registry.plugins.side_effect = lambda ptype=None: {
         PluginType.PROCESSOR: [filter_plugin, cooldown_plugin],
         PluginType.MCP: [],
-        PluginType.RECEIVER: [receiver_plugin],
+        PluginType.INGESTER: [receiver_plugin],
     }.get(ptype, [])
     registry.discover.return_value = [receiver_plugin, filter_plugin, cooldown_plugin]
     registry.setup_all.return_value = None

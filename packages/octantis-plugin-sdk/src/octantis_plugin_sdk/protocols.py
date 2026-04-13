@@ -22,11 +22,16 @@ from .types import Event, InvestigationResult, Tool
 
 
 @runtime_checkable
-class Receiver(Protocol):
-    """Event source. Receives events from an external system and delivers them
+class Ingester(Protocol):
+    """Event source. Ingests events from an external system and delivers them
     to the Octantis pipeline.
 
-    Examples: OTLP gRPC/HTTP receiver, log tailer, alert webhook, Kafka consumer.
+    Named `Ingester` — distinct from the OpenTelemetry Collector's "receiver"
+    pipeline stage — to avoid confusion: the Octantis Ingester runs inside the
+    Octantis process and emits SDK `Event` instances to the processor chain.
+
+    Examples: OTLP gRPC ingester, OTLP HTTP ingester, log tailer, alert webhook,
+    Kafka consumer.
     """
 
     def setup(self, config: dict[str, Any]) -> None: ...

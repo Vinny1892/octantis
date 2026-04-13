@@ -1,4 +1,4 @@
-"""Unit tests for the OTLP parser."""
+"""Unit tests for the OTLP parser — verifies SDK Event output (dict-based fields)."""
 
 import uuid
 
@@ -100,18 +100,18 @@ class TestParseMetricsProto:
         assert event is not None
         assert event.event_type == "metric"
         assert len(event.metrics) == 2
-        assert event.metrics[0].name == "cpu_usage"
-        assert event.metrics[0].value == 72.5
-        assert event.metrics[0].unit == "%"
-        assert event.metrics[1].name == "memory_usage"
-        assert event.metrics[1].value == 1024.0
+        assert event.metrics[0]["name"] == "cpu_usage"
+        assert event.metrics[0]["value"] == 72.5
+        assert event.metrics[0]["unit"] == "%"
+        assert event.metrics[1]["name"] == "memory_usage"
+        assert event.metrics[1]["value"] == 1024.0
 
     def test_resource_mapping(self):
         req = _make_metrics_request()
         event = parser.parse_metrics_proto(req)
-        assert event.resource.service_name == "my-service"
-        assert event.resource.extra.get("k8s.namespace.name") == "default"
-        assert event.resource.extra.get("k8s.pod.name") == "pod-abc"
+        assert event.resource.get("service.name") == "my-service"
+        assert event.resource.get("k8s.namespace.name") == "default"
+        assert event.resource.get("k8s.pod.name") == "pod-abc"
 
     def test_extra_attributes(self):
         req = ExportMetricsServiceRequest()
@@ -131,8 +131,8 @@ class TestParseMetricsProto:
             req,
         )
         event = parser.parse_metrics_proto(req)
-        assert "custom.label" in event.resource.extra
-        assert event.resource.extra["custom.label"] == "val"
+        assert "custom.label" in event.resource
+        assert event.resource["custom.label"] == "val"
 
     def test_empty_payload(self):
         req = ExportMetricsServiceRequest()
@@ -189,15 +189,15 @@ class TestParseLogsProto:
         assert event is not None
         assert event.event_type == "log"
         assert len(event.logs) == 1
-        assert event.logs[0].body == "Something went wrong"
-        assert event.logs[0].severity_text == "ERROR"
-        assert event.logs[0].severity_number == 17
+        assert event.logs[0]["body"] == "Something went wrong"
+        assert event.logs[0]["severity_text"] == "ERROR"
+        assert event.logs[0]["severity_number"] == 17
 
     def test_resource_mapping(self):
         req = _make_logs_request()
         event = parser.parse_logs_proto(req)
-        assert event.resource.service_name == "my-service"
-        assert event.resource.extra.get("k8s.namespace.name") == "default"
+        assert event.resource.get("service.name") == "my-service"
+        assert event.resource.get("k8s.namespace.name") == "default"
 
 
 class TestParseMetricsJson:
@@ -227,8 +227,8 @@ class TestParseMetricsJson:
         event = parser.parse_metrics_json(data)
         assert event is not None
         assert event.event_type == "metric"
-        assert event.metrics[0].name == "requests"
-        assert event.metrics[0].value == 42.0
+        assert event.metrics[0]["name"] == "requests"
+        assert event.metrics[0]["value"] == 42.0
         assert event.source == "json-svc"
 
 
@@ -259,7 +259,7 @@ class TestParseLogsJson:
         event = parser.parse_logs_json(data)
         assert event is not None
         assert event.event_type == "log"
-        assert event.logs[0].body == "test log"
+        assert event.logs[0]["body"] == "test log"
 
 
 class TestMalformedInput:
@@ -317,8 +317,8 @@ class TestCounterNormalization:
         assert event is not None
         assert len(event.metrics) == 1
         m = event.metrics[0]
-        assert m.name == "node_cpu_seconds_total"
-        assert m.value == (123456.78 % 1.0) * 100.0
+        assert m["name"] == "node_cpu_seconds_total"
+        assert m["value"] == (123456.78 % 1.0) * 100.0
 
     def test_unknown_metric_not_normalized(self):
         data = {
@@ -352,8 +352,8 @@ class TestCounterNormalization:
         }
         event = parser.parse_metrics_json(data)
         assert event is not None
-        assert event.metrics[0].name == "custom_metric_total"
-        assert event.metrics[0].value == 123456.78
+        assert event.metrics[0]["name"] == "custom_metric_total"
+        assert event.metrics[0]["value"] == 123456.78
 
     def test_node_memory_gauge_not_normalized(self):
         data = {
@@ -387,5 +387,5 @@ class TestCounterNormalization:
         }
         event = parser.parse_metrics_json(data)
         assert event is not None
-        assert event.metrics[0].name == "node_memory_MemAvailable_bytes"
-        assert event.metrics[0].value == 2147483648.0
+        assert event.metrics[0]["name"] == "node_memory_MemAvailable_bytes"
+        assert event.metrics[0]["value"] == 2147483648.0

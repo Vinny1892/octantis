@@ -12,7 +12,7 @@ from octantis_plugin_sdk import (
     MCPConnector,
     Notifier,
     Processor,
-    Receiver,
+    Ingester,
     SeverityAnalysis,
     Storage,
     Tool,
@@ -20,7 +20,7 @@ from octantis_plugin_sdk import (
 )
 
 
-class _ValidReceiver:
+class _ValidIngester:
     def setup(self, config: dict[str, Any]) -> None: ...
     def teardown(self) -> None: ...
     async def start(self) -> None: ...
@@ -83,8 +83,8 @@ class _MissingSetup:
     def teardown(self) -> None: ...
 
 
-def test_receiver_protocol_conformance():
-    assert isinstance(_ValidReceiver(), Receiver)
+def test_ingester_protocol_conformance():
+    assert isinstance(_ValidIngester(), Ingester)
 
 
 def test_storage_protocol_conformance():
@@ -111,11 +111,11 @@ def test_missing_methods_fails_conformance():
     assert not isinstance(_MissingSetup(), Notifier)
 
 
-def test_receiver_not_accidentally_notifier():
-    assert not isinstance(_ValidReceiver(), Notifier)
-    assert not isinstance(_ValidNotifier(), Receiver)
+def test_ingester_not_accidentally_notifier():
+    assert not isinstance(_ValidIngester(), Notifier)
+    assert not isinstance(_ValidNotifier(), Ingester)
 
 
-def test_storage_not_accidentally_receiver():
-    assert not isinstance(_ValidStorage(), Receiver)
-    assert not isinstance(_ValidReceiver(), Storage)
+def test_storage_not_accidentally_ingester():
+    assert not isinstance(_ValidStorage(), Ingester)
+    assert not isinstance(_ValidIngester(), Storage)

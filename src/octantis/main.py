@@ -3,6 +3,7 @@
 import asyncio
 import signal
 import sys
+from typing import Any
 
 import structlog
 from octantis_plugin_sdk import Event as SDKEvent
@@ -10,6 +11,7 @@ from octantis_plugin_sdk import Event as SDKEvent
 from octantis.config import settings
 from octantis.graph.workflow import build_workflow
 from octantis.mcp_client.aggregator import AggregatedMCPManager
+from octantis.models.event import InfraEvent, LogRecord, MetricDataPoint, OTelResource
 from octantis.pipeline.environment_detector import EnvironmentDetector
 from octantis.plugins.registry import PluginRegistry, PluginType
 
@@ -48,6 +50,68 @@ def _build_pipeline_config() -> dict[str, dict]:
             "max_entries": cfg.cooldown_max_entries,
         },
     }
+
+
+async def _merge_ingester_events(ingesters: list, stop_event: asyncio.Event):
+    """Fan-in merge of N Ingester.events() streams into a single async iterator.
+
+    One asyncio.Task per ingester drains its events() into a shared queue;
+    the orchestrator yields from the queue until stop_event fires and all
+    draining tasks finish.
+    """
+    merged: asyncio.Queue = asyncio.Queue()
+    sentinel = object()
+
+    async def _drain(ing) -> None:
+        try:
+            async for evt in ing.events():
+                await merged.put(evt)
+                if stop_event.is_set():
+                    break
+        finally:
+            await merged.put(sentinel)
+
+    tasks = [asyncio.create_task(_drain(ing)) for ing in ingesters]
+    remaining = len(tasks)
+    try:
+        while remaining > 0:
+            item = await merged.get()
+            if item is sentinel:
+                remaining -= 1
+                continue
+            yield item
+    finally:
+        for t in tasks:
+            if not t.done():
+                t.cancel()
+
+
+def _sdk_to_infra_event(sdk_event: SDKEvent) -> InfraEvent:
+    """Convert an SDK Event (plugin boundary) to an InfraEvent (internal workflow model).
+
+    The SDK Event's `resource` dict contains all raw OTel attributes.
+    The internal InfraEvent reconstructs the typed OTelResource from that dict,
+    which the EnvironmentDetector then promotes to K8s/Docker/AWS subtypes.
+    """
+    resource_dict: dict[str, Any] = sdk_event.resource
+    resource = OTelResource(
+        service_name=resource_dict.get("service.name"),
+        service_namespace=resource_dict.get("service.namespace"),
+        host_name=resource_dict.get("host.name"),
+        extra=resource_dict,
+    )
+    return InfraEvent(
+        event_id=sdk_event.event_id,
+        event_type=sdk_event.event_type,
+        source=sdk_event.source,
+        resource=resource,
+        metrics=[
+            MetricDataPoint(name=m["name"], value=m["value"])
+            for m in sdk_event.metrics
+        ],
+        logs=[LogRecord(body=l["body"]) for l in sdk_event.logs],
+        raw_payload=sdk_event.raw_payload,
+    )
 
 
 def _build_notifier_config() -> dict[str, dict]:
@@ -94,9 +158,9 @@ async def run() -> None:
         priorities=[p.priority for p in processors],
     )
 
-    # Receiver — event source via the registry
-    receiver_plugins = registry.plugins(PluginType.RECEIVER)
-    receiver_plugin = receiver_plugins[0].instance if receiver_plugins else None
+    # Ingesters — per-transport event sources via the registry (Fork C=1)
+    ingester_plugins = registry.plugins(PluginType.INGESTER)
+    ingester_instances = [lp.instance for lp in ingester_plugins]
 
     # MCP connectors — per-server plugins (Fork B=1), connected in parallel
     mcp_plugins = registry.plugins(PluginType.MCP)
@@ -128,9 +192,9 @@ async def run() -> None:
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, _handle_signal)
 
-    # Start the receiver (binds gRPC/HTTP ports)
-    if receiver_plugin:
-        await receiver_plugin.start()
+    # Start all ingesters (each binds its own transport)
+    for ing in ingester_instances:
+        await ing.start()
     log.info(
         "octantis.ready",
         grpc_port=settings.otlp.grpc_port if settings.otlp.grpc_enabled else None,
@@ -138,64 +202,59 @@ async def run() -> None:
         mcp_degraded=mcp_manager.is_degraded,
         cooldown_s=settings.pipeline.cooldown_seconds,
         processors=[p.name for p in processors],
-        receiver=receiver_plugins[0].name if receiver_plugins else None,
+        ingesters=[lp.name for lp in ingester_plugins],
     )
 
     from octantis.metrics import TRIGGER_TOTAL
 
     try:
-        # Consume events from the receiver plugin
-        event_source = receiver_plugin if receiver_plugin else None
-        if event_source is None:
-            log.error("octantis.no_receiver")
+        # Orchestrator: merge events from every registered Ingester (Fork C=1)
+        if not ingester_instances:
+            log.error("octantis.no_ingester")
             return
 
-        async for event in event_source.events():
+        async for event in _merge_ingester_events(ingester_instances, stop_event):
             if stop_event.is_set():
                 break
 
-            # Run processors in priority order
+            # Run processors in priority order (events are already SDK Event)
             dropped = False
             for proc_plugin in processors:
-                sdk_event = SDKEvent(
-                    event_id=event.event_id,
-                    event_type=event.event_type,
-                    source=event.source,
-                    resource=event.resource.extra if hasattr(event.resource, "extra") else {},
-                    metrics=[{"name": m.name, "value": m.value} for m in event.metrics],
-                    logs=[{"body": l.body} for l in event.logs],
-                )
-                result = await proc_plugin.instance.process(sdk_event)
+                result = await proc_plugin.instance.process(event)
                 if result is None:
                     dropped = True
                     outcome = "dropped" if proc_plugin.name == "trigger-filter" else "cooldown"
                     TRIGGER_TOTAL.labels(outcome=outcome).inc()
                     break
+                event = result
 
             if dropped:
                 continue
 
-            # Environment detection
-            event = detector.detect(event)
+            # Convert SDK Event → InfraEvent for internal workflow layer
+            infra_event = _sdk_to_infra_event(event)
+
+            # Environment detection (promotes OTelResource to typed K8s/Docker/AWS subclass)
+            infra_event = detector.detect(infra_event)
 
             TRIGGER_TOTAL.labels(outcome="passed").inc()
 
             log.info(
                 "octantis.trigger.invoking_investigation",
-                event_id=event.event_id,
-                source=event.source,
-                metrics_count=len(event.metrics),
-                logs_count=len(event.logs),
+                event_id=infra_event.event_id,
+                source=infra_event.source,
+                metrics_count=len(infra_event.metrics),
+                logs_count=len(infra_event.logs),
             )
 
             try:
-                result = await workflow.ainvoke({"event": event})
+                result = await workflow.ainvoke({"event": infra_event})
                 analysis = result.get("analysis")
                 notifications = result.get("notifications_sent", [])
                 investigation = result.get("investigation")
                 log.info(
                     "octantis.trigger.processed",
-                    event_id=event.event_id,
+                    event_id=infra_event.event_id,
                     severity=analysis.severity if analysis else None,
                     notified=notifications,
                     queries_count=len(investigation.queries_executed) if investigation else 0,
@@ -204,13 +263,13 @@ async def run() -> None:
             except Exception as exc:
                 log.error(
                     "octantis.trigger.error",
-                    event_id=event.event_id,
+                    event_id=infra_event.event_id,
                     error=str(exc),
                     exc_info=True,
                 )
     finally:
-        if receiver_plugin:
-            await receiver_plugin.stop()
+        for ing in ingester_instances:
+            await ing.stop()
         for mcp_instance in active_mcp_instances:
             await mcp_instance.close()
         registry.teardown_all()
