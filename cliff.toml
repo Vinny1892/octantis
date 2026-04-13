@@ -1,0 +1,85 @@
+# git-cliff configuration for octantis
+# Docs: https://git-cliff.org/docs/configuration
+
+[remote.github]
+owner = "Vinny1892"
+repo = "octantis"
+
+[changelog]
+# Header rendered once at the top of the file
+header = """
+# Changelog
+
+All notable changes to this project will be documented in this file.
+Versions follow [Semantic Versioning](https://semver.org/).
+"""
+
+# Template for each release section (Tera/Jinja2 syntax)
+body = """
+{% if version %}## [{{ version }}] — {{ timestamp | date(format="%Y-%m-%d") }}{% else %}## [Unreleased]{% endif %}
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group }}
+{% for commit in commits %}
+- {% if commit.scope %}**{{ commit.scope }}:** {% endif %}{{ commit.message | trim }}\
+{% if commit.remote.username %} ([{{ commit.remote.username }}](https://github.com/{{ commit.remote.username }}))\
+{% endif %}
+{% endfor %}
+{% endfor %}
+"""
+
+# Trim leading/trailing whitespace from the template output
+trim = true
+
+# Output file (used when running git-cliff --output)
+output = "CHANGELOG.md"
+
+# Do not include commits without a conventional prefix
+postprocessors = []
+
+[git]
+# Parse commits following the Conventional Commits spec
+conventional_commits = true
+filter_unconventional = false
+split_commits = false
+
+# Regex patterns for extracting commit components
+commit_preprocessors = [
+    # Strip trailing period from message
+    { pattern = '\.$', replace = "" },
+]
+
+# Map conventional commit types to changelog section headings
+commit_parsers = [
+    { message = "^feat",     group = "Features" },
+    { message = "^fix",      group = "Bug Fixes" },
+    { message = "^perf",     group = "Performance" },
+    { message = "^refactor", group = "Refactor" },
+    { message = "^test",     group = "Testing", skip = true },
+    { message = "^style",    group = "Styling", skip = true },
+    { message = "^chore",    group = "Miscellaneous", skip = true },
+    { message = "^docs",     group = "Documentation" },
+    { message = "^ci",       group = "CI/CD", skip = true },
+    { message = "^build",    group = "Build", skip = true },
+    # Fallback: anything else goes to Miscellaneous
+    { message = ".*",        group = "Miscellaneous", skip = true },
+]
+
+# Include merge commits
+filter_commits = false
+
+# Sort commits within a group: newest first
+sort_commits = "newest"
+
+# Tag pattern used to detect releases
+tag_pattern = "v[0-9].*"
+
+# Ignore pre-release tags from the changelog
+ignore_tags = "alpha|beta|rc"
+
+# Protect breaking changes from being grouped away
+protect_breaking_commits = true
+
+# Link to GitHub for commit/PR references (requires GITHUB_TOKEN for private repos)
+link_parsers = [
+    { pattern = "#(\\d+)", href = "https://github.com/Vinny1892/octantis/issues/$1" },
+]
