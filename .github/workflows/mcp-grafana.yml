@@ -23,7 +23,7 @@ jobs:
       - name: Checkout upstream repo
         run: git clone --depth 1 "${{ env.UPSTREAM_REPO }}" mcp-grafana
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -33,7 +33,7 @@ jobs:
         id: upstream
         run: echo "sha=$(git -C mcp-grafana rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
 
-      - uses: docker/metadata-action@v5
+      - uses: docker/metadata-action@v6
         id: meta
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
@@ -41,7 +41,7 @@ jobs:
             type=raw,value=latest
             type=raw,value=${{ steps.upstream.outputs.sha }}
 
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: ./mcp-grafana
           push: true
