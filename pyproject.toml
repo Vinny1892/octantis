@@ -5,10 +5,17 @@ description = "Intelligent infrastructure monitoring agent for EKS/K8s"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "AGPL-3.0-or-later" }
+authors = [
+    { name = "Vinicius Espindola" },
+]
+keywords = ["observability", "otel", "opentelemetry", "kubernetes", "incident", "llm", "mcp"]
 classifiers = [
     "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Monitoring",
+    "Topic :: System :: Systems Administration",
+    "Environment :: No Input/Output (Daemon)",
 ]
 dependencies = [
     "langgraph>=0.2.0",
@@ -25,11 +32,16 @@ dependencies = [
     "pydantic-settings>=2.6.0",
     "structlog>=24.4.0",
     "python-dotenv>=1.0.0",
-    "pytest-cov>=7.1.0",
-    "octantis-plugin-sdk",
+    "octantis-plugin-sdk>=0.1.0",
     "pyjwt[crypto]>=2.9.0",
     "aiokafka>=0.11.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/Vinny1892/octantis"
+Repository = "https://github.com/Vinny1892/octantis"
+Documentation = "https://github.com/Vinny1892/octantis#readme"
+"Bug Tracker" = "https://github.com/Vinny1892/octantis/issues"
 
 [tool.uv.sources]
 octantis-plugin-sdk = { path = "packages/octantis-plugin-sdk", editable = true }
@@ -67,6 +79,7 @@ dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.24.0",
     "pytest-mock>=3.14.0",
+    "pytest-cov>=7.1.0",
     "ruff>=0.11.0",
     "testcontainers[kafka]>=4.14.2",
 ]
