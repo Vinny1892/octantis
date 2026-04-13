@@ -176,12 +176,20 @@ def _make_registry(events_list=None, filter_pass=True, cooldown_pass=True):
     mock_cooldown_instance.process = cooldown_process
 
     filter_plugin = LoadedPlugin(
-        name="trigger-filter", type=PluginType.PROCESSOR,
-        instance=mock_filter_instance, source_package="octantis", version="0.1.0", priority=100,
+        name="trigger-filter",
+        type=PluginType.PROCESSOR,
+        instance=mock_filter_instance,
+        source_package="octantis",
+        version="0.1.0",
+        priority=100,
     )
     cooldown_plugin = LoadedPlugin(
-        name="fingerprint-cooldown", type=PluginType.PROCESSOR,
-        instance=mock_cooldown_instance, source_package="octantis", version="0.1.0", priority=200,
+        name="fingerprint-cooldown",
+        type=PluginType.PROCESSOR,
+        instance=mock_cooldown_instance,
+        source_package="octantis",
+        version="0.1.0",
+        priority=200,
     )
 
     mock_receiver_instance = MagicMock()
@@ -190,8 +198,12 @@ def _make_registry(events_list=None, filter_pass=True, cooldown_pass=True):
     mock_receiver_instance.events.return_value = _events_from_list(events_list or [])
 
     receiver_plugin = LoadedPlugin(
-        name="otlp", type=PluginType.INGESTER,
-        instance=mock_receiver_instance, source_package="octantis", version="0.1.0", priority=0,
+        name="otlp",
+        type=PluginType.INGESTER,
+        instance=mock_receiver_instance,
+        source_package="octantis",
+        version="0.1.0",
+        priority=0,
     )
 
     registry = MagicMock()
@@ -470,9 +482,7 @@ async def test_run_calls_gate_before_setup():
         patch("octantis.main.PLAN_TIER_INFO"),
     ):
         mock_detector = MagicMock()
-        mock_detector.detect.return_value = MagicMock(
-            event_id="x", source="s", metrics=[], logs=[]
-        )
+        mock_detector.detect.return_value = MagicMock(event_id="x", source="s", metrics=[], logs=[])
         MockDetector.return_value = mock_detector
         await run()
 

@@ -115,10 +115,7 @@ def _sdk_to_infra_event(sdk_event: SDKEvent) -> InfraEvent:
         event_type=sdk_event.event_type,
         source=sdk_event.source,
         resource=resource,
-        metrics=[
-            MetricDataPoint(name=m["name"], value=m["value"])
-            for m in sdk_event.metrics
-        ],
+        metrics=[MetricDataPoint(name=m["name"], value=m["value"]) for m in sdk_event.metrics],
         logs=[LogRecord(body=log_rec["body"]) for log_rec in sdk_event.logs],
         raw_payload=sdk_event.raw_payload,
     )

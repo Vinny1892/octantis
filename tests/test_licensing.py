@@ -32,7 +32,9 @@ def keypair():
     return priv_pem, pub_pem
 
 
-def _make_token(priv_pem: bytes, tier: str = "free", *, expired: bool = False, bad_iss: bool = False) -> str:
+def _make_token(
+    priv_pem: bytes, tier: str = "free", *, expired: bool = False, bad_iss: bool = False
+) -> str:
     now = int(time.time())
     payload = {
         "iss": "octantis" if not bad_iss else "evil-corp",
@@ -119,7 +121,10 @@ class TestValidateLicenseJWT:
     def test_unknown_tier_raises(self, keypair):
         priv_pem, pub_pem = keypair
         token = _make_token(priv_pem, tier="diamond")
-        with _patch_public_key(pub_pem), pytest.raises(LicenseValidationError, match="unknown tier"):
+        with (
+            _patch_public_key(pub_pem),
+            pytest.raises(LicenseValidationError, match="unknown tier"),
+        ):
             validate_license_jwt(token)
 
     def test_missing_tier_claim_raises(self, keypair):
@@ -144,8 +149,10 @@ class TestResolveTier:
         _, pub_pem = keypair
         with _patch_public_key(pub_pem), patch.dict("os.environ", {}, clear=False):
             import os
+
             os.environ.pop("OCTANTIS_LICENSE_JWT", None)
             from octantis.licensing.validator import resolve_tier
+
             assert resolve_tier() == PluginTier.FREE
 
     def test_valid_token_returns_correct_tier(self, keypair):
@@ -153,12 +160,17 @@ class TestResolveTier:
         token = _make_token(priv_pem, tier="pro")
         with _patch_public_key(pub_pem), patch.dict("os.environ", {"OCTANTIS_LICENSE_JWT": token}):
             from octantis.licensing.validator import resolve_tier
+
             assert resolve_tier() == PluginTier.PRO
 
     def test_invalid_token_falls_back_to_free(self, keypair):
         _, pub_pem = keypair
-        with _patch_public_key(pub_pem), patch.dict("os.environ", {"OCTANTIS_LICENSE_JWT": "bad.token.here"}):
+        with (
+            _patch_public_key(pub_pem),
+            patch.dict("os.environ", {"OCTANTIS_LICENSE_JWT": "bad.token.here"}),
+        ):
             from octantis.licensing.validator import resolve_tier
+
             assert resolve_tier() == PluginTier.FREE
 
     def test_expired_token_falls_back_to_free(self, keypair):
@@ -166,12 +178,14 @@ class TestResolveTier:
         token = _make_token(priv_pem, expired=True)
         with _patch_public_key(pub_pem), patch.dict("os.environ", {"OCTANTIS_LICENSE_JWT": token}):
             from octantis.licensing.validator import resolve_tier
+
             assert resolve_tier() == PluginTier.FREE
 
 
 # ---------------------------------------------------------------------------
 # PlanGatingEngine tests
 # ---------------------------------------------------------------------------
+
 
 def _make_plugin(name: str, ptype_value: str):
     """Build a minimal LoadedPlugin mock."""

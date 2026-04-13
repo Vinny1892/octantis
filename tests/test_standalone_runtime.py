@@ -62,7 +62,11 @@ def _make_workflow(delay: float = 0.0, *, raises: bool = False):
             await asyncio.sleep(delay)
         if raises:
             raise RuntimeError("workflow failed")
-        return {"analysis": MagicMock(severity="CRITICAL"), "notifications_sent": [], "investigation": None}
+        return {
+            "analysis": MagicMock(severity="CRITICAL"),
+            "notifications_sent": [],
+            "investigation": None,
+        }
 
     wf.ainvoke = ainvoke
     return wf

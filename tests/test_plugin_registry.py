@@ -16,6 +16,7 @@ from octantis.plugins.registry import (
 
 # ---- plugin test doubles ----------------------------------------------------
 
+
 class FakeIngester:
     def __init__(self) -> None:
         self.calls: list[str] = []
@@ -57,12 +58,14 @@ class FakeMCP:
     def teardown(self) -> None: ...
     def get_tools(self) -> list[Any]:
         return []
+
     def is_degraded(self) -> bool:
         return False
 
 
 class FakeProcessorHigh:
     priority = 200
+
     def setup(self, config: dict[str, Any]) -> None: ...
     def teardown(self) -> None: ...
     async def process(self, event):
@@ -71,6 +74,7 @@ class FakeProcessorHigh:
 
 class FakeProcessorLow:
     priority = 100
+
     def setup(self, config: dict[str, Any]) -> None: ...
     def teardown(self) -> None: ...
     async def process(self, event):
@@ -86,6 +90,7 @@ class FakeNotifier:
 class SetupRaises:
     def setup(self, config: dict[str, Any]) -> None:
         raise RuntimeError("boom")
+
     def teardown(self) -> None: ...
     async def send(self, result) -> None: ...
 
@@ -93,19 +98,24 @@ class SetupRaises:
 class TeardownRaises:
     def __init__(self) -> None:
         self.setup_called = False
+
     def setup(self, config: dict[str, Any]) -> None:
         self.setup_called = True
+
     def teardown(self) -> None:
         raise RuntimeError("teardown boom")
+
     async def send(self, result) -> None: ...
 
 
 class NotAProtocol:
     """Missing required methods — must fail conformance."""
+
     pass
 
 
 # ---- entry-point fake helpers ----------------------------------------------
+
 
 @dataclass
 class _FakeDist:
@@ -139,10 +149,14 @@ def _patch_entry_points(monkeypatch: pytest.MonkeyPatch, mapping: dict[str, list
 
 # ---- tests -----------------------------------------------------------------
 
+
 def test_discovers_plugin_from_entry_point(monkeypatch):
-    _patch_entry_points(monkeypatch, {
-        "octantis.ingesters": [_FakeEP("otlp-grpc", FakeIngester)],
-    })
+    _patch_entry_points(
+        monkeypatch,
+        {
+            "octantis.ingesters": [_FakeEP("otlp-grpc", FakeIngester)],
+        },
+    )
     reg = PluginRegistry()
     loaded = reg.discover()
     assert len(loaded) == 1
@@ -153,11 +167,14 @@ def test_discovers_plugin_from_entry_point(monkeypatch):
 
 
 def test_load_order_storage_before_mcp_before_processor(monkeypatch):
-    _patch_entry_points(monkeypatch, {
-        "octantis.processors": [_FakeEP("proc", FakeProcessorLow)],
-        "octantis.mcp": [_FakeEP("mcp", FakeMCP)],
-        "octantis.ingesters": [_FakeEP("recv", FakeIngester)],
-    })
+    _patch_entry_points(
+        monkeypatch,
+        {
+            "octantis.processors": [_FakeEP("proc", FakeProcessorLow)],
+            "octantis.mcp": [_FakeEP("mcp", FakeMCP)],
+            "octantis.ingesters": [_FakeEP("recv", FakeIngester)],
+        },
+    )
     reg = PluginRegistry()
     loaded = reg.discover()
     types = [p.type for p in loaded]
@@ -165,12 +182,15 @@ def test_load_order_storage_before_mcp_before_processor(monkeypatch):
 
 
 def test_processors_sorted_by_priority_ascending(monkeypatch):
-    _patch_entry_points(monkeypatch, {
-        "octantis.processors": [
-            _FakeEP("high", FakeProcessorHigh),  # priority 200
-            _FakeEP("low", FakeProcessorLow),    # priority 100
-        ],
-    })
+    _patch_entry_points(
+        monkeypatch,
+        {
+            "octantis.processors": [
+                _FakeEP("high", FakeProcessorHigh),  # priority 200
+                _FakeEP("low", FakeProcessorLow),  # priority 100
+            ],
+        },
+    )
     reg = PluginRegistry()
     loaded = reg.discover()
     names = [p.name for p in loaded]
@@ -178,12 +198,15 @@ def test_processors_sorted_by_priority_ascending(monkeypatch):
 
 
 def test_duplicate_name_in_same_group_raises(monkeypatch):
-    _patch_entry_points(monkeypatch, {
-        "octantis.notifiers": [
-            _FakeEP("slack", FakeNotifier, dist_name="pkg-a"),
-            _FakeEP("slack", FakeNotifier, dist_name="pkg-b"),
-        ],
-    })
+    _patch_entry_points(
+        monkeypatch,
+        {
+            "octantis.notifiers": [
+                _FakeEP("slack", FakeNotifier, dist_name="pkg-a"),
+                _FakeEP("slack", FakeNotifier, dist_name="pkg-b"),
+            ],
+        },
+    )
     reg = PluginRegistry()
     with pytest.raises(DuplicatePluginError) as exc:
         reg.discover()
@@ -193,10 +216,13 @@ def test_duplicate_name_in_same_group_raises(monkeypatch):
 
 
 def test_same_name_across_groups_is_allowed(monkeypatch):
-    _patch_entry_points(monkeypatch, {
-        "octantis.ingesters": [_FakeEP("alpha", FakeIngester)],
-        "octantis.notifiers": [_FakeEP("alpha", FakeNotifier)],
-    })
+    _patch_entry_points(
+        monkeypatch,
+        {
+            "octantis.ingesters": [_FakeEP("alpha", FakeIngester)],
+            "octantis.notifiers": [_FakeEP("alpha", FakeNotifier)],
+        },
+    )
     reg = PluginRegistry()
     loaded = reg.discover()
     assert {p.name for p in loaded} == {"alpha"}
@@ -204,9 +230,12 @@ def test_same_name_across_groups_is_allowed(monkeypatch):
 
 
 def test_non_conforming_plugin_rejected(monkeypatch):
-    _patch_entry_points(monkeypatch, {
-        "octantis.notifiers": [_FakeEP("bad", NotAProtocol)],
-    })
+    _patch_entry_points(
+        monkeypatch,
+        {
+            "octantis.notifiers": [_FakeEP("bad", NotAProtocol)],
+        },
+    )
     reg = PluginRegistry()
     with pytest.raises(PluginLoadError) as exc:
         reg.discover()
@@ -217,7 +246,9 @@ def test_setup_called_in_load_order(monkeypatch):
     order: list[str] = []
 
     class R:
-        def setup(self, c): order.append("R")
+        def setup(self, c):
+            order.append("R")
+
         def teardown(self): ...
         async def start(self): ...
         async def stop(self): ...
@@ -226,21 +257,31 @@ def test_setup_called_in_load_order(monkeypatch):
                 yield None
 
     class M:
-        def setup(self, c): order.append("M")
+        def setup(self, c):
+            order.append("M")
+
         def teardown(self): ...
-        def get_tools(self): return []
-        def is_degraded(self): return False
+        def get_tools(self):
+            return []
+
+        def is_degraded(self):
+            return False
 
     class N:
-        def setup(self, c): order.append("N")
+        def setup(self, c):
+            order.append("N")
+
         def teardown(self): ...
         async def send(self, r): ...
 
-    _patch_entry_points(monkeypatch, {
-        "octantis.notifiers": [_FakeEP("n", N)],
-        "octantis.ingesters": [_FakeEP("r", R)],
-        "octantis.mcp": [_FakeEP("m", M)],
-    })
+    _patch_entry_points(
+        monkeypatch,
+        {
+            "octantis.notifiers": [_FakeEP("n", N)],
+            "octantis.ingesters": [_FakeEP("r", R)],
+            "octantis.mcp": [_FakeEP("m", M)],
+        },
+    )
     reg = PluginRegistry()
     reg.discover()
     reg.setup_all()
@@ -252,7 +293,9 @@ def test_teardown_in_reverse_load_order(monkeypatch):
 
     class R:
         def setup(self, c): ...
-        def teardown(self): order.append("R")
+        def teardown(self):
+            order.append("R")
+
         async def start(self): ...
         async def stop(self): ...
         async def events(self):
@@ -261,20 +304,30 @@ def test_teardown_in_reverse_load_order(monkeypatch):
 
     class M:
         def setup(self, c): ...
-        def teardown(self): order.append("M")
-        def get_tools(self): return []
-        def is_degraded(self): return False
+        def teardown(self):
+            order.append("M")
+
+        def get_tools(self):
+            return []
+
+        def is_degraded(self):
+            return False
 
     class N:
         def setup(self, c): ...
-        def teardown(self): order.append("N")
+        def teardown(self):
+            order.append("N")
+
         async def send(self, r): ...
 
-    _patch_entry_points(monkeypatch, {
-        "octantis.ingesters": [_FakeEP("r", R)],
-        "octantis.mcp": [_FakeEP("m", M)],
-        "octantis.notifiers": [_FakeEP("n", N)],
-    })
+    _patch_entry_points(
+        monkeypatch,
+        {
+            "octantis.ingesters": [_FakeEP("r", R)],
+            "octantis.mcp": [_FakeEP("m", M)],
+            "octantis.notifiers": [_FakeEP("n", N)],
+        },
+    )
     reg = PluginRegistry()
     reg.discover()
     reg.setup_all()
@@ -288,15 +341,20 @@ def test_teardown_continues_after_exception(monkeypatch):
 
     class Good:
         def setup(self, c): ...
-        def teardown(self): survivors.append("good")
+        def teardown(self):
+            survivors.append("good")
+
         async def send(self, r): ...
 
-    _patch_entry_points(monkeypatch, {
-        "octantis.notifiers": [
-            _FakeEP("raises", TeardownRaises),
-            _FakeEP("good", Good),
-        ],
-    })
+    _patch_entry_points(
+        monkeypatch,
+        {
+            "octantis.notifiers": [
+                _FakeEP("raises", TeardownRaises),
+                _FakeEP("good", Good),
+            ],
+        },
+    )
     reg = PluginRegistry()
     reg.discover()
     reg.setup_all()
@@ -305,9 +363,12 @@ def test_teardown_continues_after_exception(monkeypatch):
 
 
 def test_setup_failure_propagates(monkeypatch):
-    _patch_entry_points(monkeypatch, {
-        "octantis.notifiers": [_FakeEP("bad", SetupRaises)],
-    })
+    _patch_entry_points(
+        monkeypatch,
+        {
+            "octantis.notifiers": [_FakeEP("bad", SetupRaises)],
+        },
+    )
     reg = PluginRegistry()
     reg.discover()
     with pytest.raises(RuntimeError, match="boom"):
@@ -315,10 +376,13 @@ def test_setup_failure_propagates(monkeypatch):
 
 
 def test_plugins_filter_by_type(monkeypatch):
-    _patch_entry_points(monkeypatch, {
-        "octantis.ingesters": [_FakeEP("r", FakeIngester)],
-        "octantis.notifiers": [_FakeEP("n", FakeNotifier)],
-    })
+    _patch_entry_points(
+        monkeypatch,
+        {
+            "octantis.ingesters": [_FakeEP("r", FakeIngester)],
+            "octantis.notifiers": [_FakeEP("n", FakeNotifier)],
+        },
+    )
     reg = PluginRegistry()
     reg.discover()
     assert [p.name for p in reg.plugins(PluginType.INGESTER)] == ["r"]
@@ -330,13 +394,18 @@ def test_setup_passes_per_plugin_config(monkeypatch):
     received: dict[str, dict] = {}
 
     class N:
-        def setup(self, c): received["n"] = c
+        def setup(self, c):
+            received["n"] = c
+
         def teardown(self): ...
         async def send(self, r): ...
 
-    _patch_entry_points(monkeypatch, {
-        "octantis.notifiers": [_FakeEP("n", N)],
-    })
+    _patch_entry_points(
+        monkeypatch,
+        {
+            "octantis.notifiers": [_FakeEP("n", N)],
+        },
+    )
     reg = PluginRegistry()
     reg.discover()
     reg.setup_all({"n": {"webhook_url": "https://example.com"}})
@@ -344,9 +413,12 @@ def test_setup_passes_per_plugin_config(monkeypatch):
 
 
 def test_lifecycle_logs_emitted(monkeypatch, capsys):
-    _patch_entry_points(monkeypatch, {
-        "octantis.notifiers": [_FakeEP("log-test", FakeNotifier)],
-    })
+    _patch_entry_points(
+        monkeypatch,
+        {
+            "octantis.notifiers": [_FakeEP("log-test", FakeNotifier)],
+        },
+    )
     reg = PluginRegistry()
     reg.discover()
     reg.setup_all()

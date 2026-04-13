@@ -23,9 +23,7 @@ def fake_settings():
 
 
 class TestProtocolConformance:
-    @pytest.mark.parametrize(
-        "cls", [GrafanaMCPPlugin, K8sMCPPlugin, DockerMCPPlugin, AWSMCPPlugin]
-    )
+    @pytest.mark.parametrize("cls", [GrafanaMCPPlugin, K8sMCPPlugin, DockerMCPPlugin, AWSMCPPlugin])
     def test_each_plugin_satisfies_mcpconnector(self, cls):
         assert isinstance(cls(), MCPConnector)
 

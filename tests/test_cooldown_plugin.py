@@ -46,10 +46,15 @@ def test_first_occurrence_passes_second_suppressed():
 def test_different_fingerprints_both_pass():
     p = FingerprintCooldownPlugin()
     p.setup({})
-    e1 = Event(event_id="e1", event_type="metric", source="svc-a",
-               resource={"k8s.deployment.name": "api"})
-    e2 = Event(event_id="e2", event_type="metric", source="svc-b",
-               resource={"k8s.deployment.name": "worker"})
+    e1 = Event(
+        event_id="e1", event_type="metric", source="svc-a", resource={"k8s.deployment.name": "api"}
+    )
+    e2 = Event(
+        event_id="e2",
+        event_type="metric",
+        source="svc-b",
+        resource={"k8s.deployment.name": "worker"},
+    )
     assert asyncio.run(p.process(e1)) is e1
     assert asyncio.run(p.process(e2)) is e2
     p.teardown()

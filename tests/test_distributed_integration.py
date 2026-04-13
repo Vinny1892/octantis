@@ -210,9 +210,7 @@ async def test_redelivery_on_no_commit(redpanda_broker, unique_topic):
     assert first_delivery["event_id"] == "redeliver-1"
 
     # Second consumer in the same group: must receive the same message again
-    second_delivery = await _consume_n(
-        redpanda_broker, unique_topic, group, n=1, timeout=15.0
-    )
+    second_delivery = await _consume_n(redpanda_broker, unique_topic, group, n=1, timeout=15.0)
 
     assert len(second_delivery) == 1
     assert second_delivery[0]["event_id"] == "redeliver-1", (
@@ -313,6 +311,4 @@ async def test_idempotency_workflow_called_per_delivery(
 
     # Second delivery (redelivery) — commit this time
     await counting_consumer(commit=True)
-    assert call_count == 2, (
-        "Workflow should have been called twice — once per delivery attempt"
-    )
+    assert call_count == 2, "Workflow should have been called twice — once per delivery attempt"

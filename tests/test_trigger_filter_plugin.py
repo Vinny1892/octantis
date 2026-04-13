@@ -26,6 +26,7 @@ def test_process_before_setup_returns_event_unchanged():
     p = TriggerFilterPlugin()
     evt = _event()
     import asyncio
+
     result = asyncio.run(p.process(evt))
     assert result is evt
 
@@ -43,6 +44,7 @@ def test_process_drops_event_with_no_signal():
     p = TriggerFilterPlugin()
     p.setup({})
     import asyncio
+
     result = asyncio.run(p.process(_event()))
     assert result is None
     p.teardown()

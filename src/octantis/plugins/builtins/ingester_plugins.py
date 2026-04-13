@@ -59,9 +59,7 @@ class _BaseOTLPIngester:
                 continue
             qsize = self._queue.qsize()
             if watermark_threshold and qsize > watermark_threshold and not watermark_logged:
-                log.warning(
-                    "otlp.queue.high_watermark", ingester=self.name, queue_size=qsize
-                )
+                log.warning("otlp.queue.high_watermark", ingester=self.name, queue_size=qsize)
                 watermark_logged = True
             elif qsize <= watermark_threshold:
                 watermark_logged = False
@@ -82,9 +80,7 @@ class OTLPGrpcIngester(_BaseOTLPIngester):
             log.info("otlp.grpc.disabled")
             return
         assert self._queue is not None and self._parser is not None
-        self._server = await create_grpc_server(
-            self._queue, self._parser, settings.otlp.grpc_port
-        )
+        self._server = await create_grpc_server(self._queue, self._parser, settings.otlp.grpc_port)
         await self._server.start()
         log.info("otlp.grpc.started", port=settings.otlp.grpc_port)
 

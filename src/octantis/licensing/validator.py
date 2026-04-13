@@ -24,9 +24,7 @@ _ISSUER = "octantis"
 _ALGORITHM = "EdDSA"
 
 # Load the public key once at import time (PEM bytes only — no private key here).
-_PUBLIC_KEY_PEM: bytes = (
-    files("octantis.licensing").joinpath("public_key.pem").read_bytes()
-)
+_PUBLIC_KEY_PEM: bytes = files("octantis.licensing").joinpath("public_key.pem").read_bytes()
 
 
 class LicenseValidationError(ValueError):

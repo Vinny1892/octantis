@@ -40,10 +40,9 @@ def _to_core_result(result: InvestigationResult) -> CoreInvestigationResult:
     )
     # Inject resource attributes as `extra` so context_summary sees them.
     core_event.resource.extra = dict(sdk_event.resource)
-    core_event.resource.service_name = (
-        sdk_event.resource.get("service.name")
-        or sdk_event.resource.get("service_name")
-    )
+    core_event.resource.service_name = sdk_event.resource.get(
+        "service.name"
+    ) or sdk_event.resource.get("service_name")
 
     return CoreInvestigationResult(
         original_event=core_event,

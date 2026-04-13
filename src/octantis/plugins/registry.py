@@ -78,7 +78,9 @@ class LoadedPlugin:
     priority: int = 0  # only meaningful for PluginType.PROCESSOR
 
     def __repr__(self) -> str:  # pragma: no cover — trivial
-        return f"LoadedPlugin(name={self.name!r}, type={self.type.value}, pkg={self.source_package})"
+        return (
+            f"LoadedPlugin(name={self.name!r}, type={self.type.value}, pkg={self.source_package})"
+        )
 
 
 @dataclass
@@ -249,7 +251,9 @@ class PluginRegistry:
 def _ep_dist_name(ep: EntryPoint) -> str:
     dist = getattr(ep, "dist", None)
     if dist is not None:
-        name = getattr(dist, "name", None) or getattr(getattr(dist, "metadata", None), "get", lambda _: None)("Name")
+        name = getattr(dist, "name", None) or getattr(
+            getattr(dist, "metadata", None), "get", lambda _: None
+        )("Name")
         if name:
             return str(name)
     return "unknown"
