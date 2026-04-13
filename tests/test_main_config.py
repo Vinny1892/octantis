@@ -134,6 +134,8 @@ def _mock_settings():
     mock.pipeline.cooldown_max_entries = 1000
     mock.slack.enabled = False
     mock.discord.enabled = False
+    mock.runtime.mode = "standalone"
+    mock.runtime.workers = 5
     return mock
 
 

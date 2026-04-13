@@ -51,14 +51,14 @@
 
 ## 4. Phase 4 — Concurrent standalone runtime
 
-- [ ] 4.1 Implement standalone runner using `asyncio.TaskGroup` + semaphore bounded by `OCTANTIS_WORKERS` (default 20)
-- [ ] 4.2 Implement `OCTANTIS_MODE` dispatcher; `standalone` is the default
-- [ ] 4.3 Reject unknown `OCTANTIS_MODE` values at startup with a clear error
-- [ ] 4.4 Export `octantis_standalone_active_workflows` and `octantis_standalone_semaphore_capacity` metrics
-- [ ] 4.5 Concurrency tests: 5 events → 5 parallel workflows; 100 events with `OCTANTIS_WORKERS=5` → semaphore-bounded; cancellation propagation
-- [ ] 4.6 **Phase 4 test review**: verify tests actually exercise the TaskGroup/semaphore boundary and race-condition scenarios
+- [x] 4.1 Implement standalone runner using `asyncio.TaskGroup` + semaphore bounded by `OCTANTIS_WORKERS` (default 20)
+- [x] 4.2 Implement `OCTANTIS_MODE` dispatcher; `standalone` is the default
+- [x] 4.3 Reject unknown `OCTANTIS_MODE` values at startup with a clear error
+- [x] 4.4 Export `octantis_standalone_active_workflows` and `octantis_standalone_semaphore_capacity` metrics
+- [x] 4.5 Concurrency tests: 5 events → 5 parallel workflows; 100 events with `OCTANTIS_WORKERS=5` → semaphore-bounded; cancellation propagation
+- [x] 4.6 **Phase 4 test review**: verify tests actually exercise the TaskGroup/semaphore boundary and race-condition scenarios
 - [ ] 4.7 Manual smoke: burst 20 events in standalone → observe metrics and logs show parallel execution
-- [ ] 4.8 **Phase 4 docs**: `OCTANTIS_WORKERS` tuning guide, standalone performance expectations
+- [x] 4.8 **Phase 4 docs**: `OCTANTIS_WORKERS` tuning guide, standalone performance expectations
 - [ ] 4.9 **Phase 4 gate**: coverage ≥ 94%, CI green, docs review — only then close the phase
 
 ## 5. Phase 5 — Distributed runtime (Redpanda ingester + worker)

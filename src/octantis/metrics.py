@@ -54,6 +54,17 @@ LLM_TOKENS_TOTAL = Counter(
 )
 
 
+# Standalone runtime
+STANDALONE_ACTIVE_WORKFLOWS = Gauge(
+    "octantis_standalone_active_workflows",
+    "Number of investigation workflows currently executing in parallel",
+)
+
+STANDALONE_SEMAPHORE_CAPACITY = Gauge(
+    "octantis_standalone_semaphore_capacity",
+    "Maximum concurrent workflows allowed (OCTANTIS_WORKERS)",
+)
+
 # Plan / licensing
 PLAN_TIER_INFO = Gauge(
     "octantis_plan_tier_info",

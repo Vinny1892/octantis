@@ -12,10 +12,18 @@ from octantis.config import settings
 from octantis.graph.workflow import build_workflow
 from octantis.licensing.validator import resolve_tier
 from octantis.mcp_client.aggregator import AggregatedMCPManager
-from octantis.metrics import PLAN_TIER_INFO
+from octantis.metrics import (
+    PLAN_TIER_INFO,
+    STANDALONE_ACTIVE_WORKFLOWS,
+    STANDALONE_SEMAPHORE_CAPACITY,
+    TRIGGER_TOTAL,
+)
 from octantis.models.event import InfraEvent, LogRecord, MetricDataPoint, OTelResource
 from octantis.pipeline.environment_detector import EnvironmentDetector
 from octantis.plugins.registry import PluginRegistry, PluginType
+
+_VALID_MODES = frozenset({"standalone", "ingester", "worker"})
+_IMPLEMENTED_MODES = frozenset({"standalone"})
 
 log = structlog.get_logger(__name__)
 
@@ -116,6 +124,96 @@ def _sdk_to_infra_event(sdk_event: SDKEvent) -> InfraEvent:
     )
 
 
+async def _process_one_event(
+    event: SDKEvent,
+    processors: list,
+    detector: EnvironmentDetector,
+    workflow: Any,
+) -> None:
+    """Process a single SDK Event through the full pipeline (processors → workflow).
+
+    Designed to run as a concurrent asyncio.Task inside _run_standalone.
+    """
+    # Run processors in priority order
+    for proc_plugin in processors:
+        result = await proc_plugin.instance.process(event)
+        if result is None:
+            outcome = "dropped" if proc_plugin.name == "trigger-filter" else "cooldown"
+            TRIGGER_TOTAL.labels(outcome=outcome).inc()
+            return
+        event = result
+
+    # Convert SDK Event → InfraEvent for internal workflow layer
+    infra_event = _sdk_to_infra_event(event)
+    infra_event = detector.detect(infra_event)
+
+    TRIGGER_TOTAL.labels(outcome="passed").inc()
+
+    log.info(
+        "octantis.trigger.invoking_investigation",
+        event_id=infra_event.event_id,
+        source=infra_event.source,
+        metrics_count=len(infra_event.metrics),
+        logs_count=len(infra_event.logs),
+    )
+
+    try:
+        result = await workflow.ainvoke({"event": infra_event})
+        analysis = result.get("analysis")
+        notifications = result.get("notifications_sent", [])
+        investigation = result.get("investigation")
+        log.info(
+            "octantis.trigger.processed",
+            event_id=infra_event.event_id,
+            severity=analysis.severity if analysis else None,
+            notified=notifications,
+            queries_count=len(investigation.queries_executed) if investigation else 0,
+            mcp_degraded=investigation.mcp_degraded if investigation else False,
+        )
+    except Exception as exc:
+        log.error(
+            "octantis.trigger.error",
+            event_id=infra_event.event_id,
+            error=str(exc),
+            exc_info=True,
+        )
+
+
+async def _run_standalone(
+    *,
+    ingester_instances: list,
+    processors: list,
+    detector: EnvironmentDetector,
+    workflow: Any,
+    stop_event: asyncio.Event,
+) -> None:
+    """Standalone runtime: process events concurrently bounded by OCTANTIS_WORKERS semaphore.
+
+    Each event is dispatched to its own asyncio.Task. The semaphore caps the number
+    of in-flight investigation workflows. All tasks are collected in a TaskGroup so
+    cancellation propagates cleanly on shutdown.
+    """
+    workers = settings.runtime.workers
+    sem = asyncio.Semaphore(workers)
+    STANDALONE_SEMAPHORE_CAPACITY.set(workers)
+
+    log.info("octantis.standalone.starting", max_workers=workers)
+
+    async def _bounded(event: SDKEvent) -> None:
+        async with sem:
+            STANDALONE_ACTIVE_WORKFLOWS.inc()
+            try:
+                await _process_one_event(event, processors, detector, workflow)
+            finally:
+                STANDALONE_ACTIVE_WORKFLOWS.dec()
+
+    async with asyncio.TaskGroup() as tg:
+        async for event in _merge_ingester_events(ingester_instances, stop_event):
+            if stop_event.is_set():
+                break
+            tg.create_task(_bounded(event))
+
+
 def _build_notifier_config() -> dict[str, dict]:
     configs: dict[str, dict] = {}
     if settings.slack.enabled:
@@ -212,68 +310,35 @@ async def run() -> None:
         ingesters=[lp.name for lp in ingester_plugins],
     )
 
-    from octantis.metrics import TRIGGER_TOTAL
-
     try:
-        # Orchestrator: merge events from every registered Ingester (Fork C=1)
+        mode = settings.runtime.mode
+        if mode not in _VALID_MODES:
+            log.error(
+                "octantis.unknown_mode",
+                mode=mode,
+                valid=sorted(_VALID_MODES),
+                remediation=f"Set OCTANTIS_MODE to one of: {sorted(_VALID_MODES)}",
+            )
+            sys.exit(1)
+        if mode not in _IMPLEMENTED_MODES:
+            log.error(
+                "octantis.mode_not_implemented",
+                mode=mode,
+                remediation="ingester/worker modes are implemented in Phase 5 (requires Redpanda)",
+            )
+            sys.exit(1)
+
         if not ingester_instances:
             log.error("octantis.no_ingester")
             return
 
-        async for event in _merge_ingester_events(ingester_instances, stop_event):
-            if stop_event.is_set():
-                break
-
-            # Run processors in priority order (events are already SDK Event)
-            dropped = False
-            for proc_plugin in processors:
-                result = await proc_plugin.instance.process(event)
-                if result is None:
-                    dropped = True
-                    outcome = "dropped" if proc_plugin.name == "trigger-filter" else "cooldown"
-                    TRIGGER_TOTAL.labels(outcome=outcome).inc()
-                    break
-                event = result
-
-            if dropped:
-                continue
-
-            # Convert SDK Event → InfraEvent for internal workflow layer
-            infra_event = _sdk_to_infra_event(event)
-
-            # Environment detection (promotes OTelResource to typed K8s/Docker/AWS subclass)
-            infra_event = detector.detect(infra_event)
-
-            TRIGGER_TOTAL.labels(outcome="passed").inc()
-
-            log.info(
-                "octantis.trigger.invoking_investigation",
-                event_id=infra_event.event_id,
-                source=infra_event.source,
-                metrics_count=len(infra_event.metrics),
-                logs_count=len(infra_event.logs),
-            )
-
-            try:
-                result = await workflow.ainvoke({"event": infra_event})
-                analysis = result.get("analysis")
-                notifications = result.get("notifications_sent", [])
-                investigation = result.get("investigation")
-                log.info(
-                    "octantis.trigger.processed",
-                    event_id=infra_event.event_id,
-                    severity=analysis.severity if analysis else None,
-                    notified=notifications,
-                    queries_count=len(investigation.queries_executed) if investigation else 0,
-                    mcp_degraded=investigation.mcp_degraded if investigation else False,
-                )
-            except Exception as exc:
-                log.error(
-                    "octantis.trigger.error",
-                    event_id=infra_event.event_id,
-                    error=str(exc),
-                    exc_info=True,
-                )
+        await _run_standalone(
+            ingester_instances=ingester_instances,
+            processors=processors,
+            detector=detector,
+            workflow=workflow,
+            stop_event=stop_event,
+        )
     finally:
         for ing in ingester_instances:
             await ing.stop()

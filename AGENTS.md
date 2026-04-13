@@ -20,6 +20,8 @@ docker build -t octantis .    # build container image
 
 No linting or formatting tools are configured. Python 3.12+ required. Package manager is `uv` with hatchling build backend.
 
+**Runtime mode** (Phase 4): `OCTANTIS_MODE=standalone` (default) runs all workflows concurrently in one process, bounded by `OCTANTIS_WORKERS` (default 20). Modes `ingester` and `worker` (Redpanda-based) are Phase 5.
+
 ## Architecture & Data Flow
 
 ```
@@ -143,6 +145,8 @@ for plugin authors lives in the separate Apache-2.0 package
 - **EKS dual-attribute priority**: K8s detection takes priority over AWS (rule 2 before rule 4). Use `OCTANTIS_PLATFORM=aws` to override for EKS if needed.
 - **Counter normalization**: Parser normalizes known Node Exporter counters (e.g., `node_cpu_seconds_total`) to percentages before building the SDK Event metrics list. Unknown counters pass through unchanged.
 - **SDK Event boundary**: `OTLPParser` emits `octantis_plugin_sdk.Event` (flat dicts for `resource`, `metrics`, `logs`). The internal workflow layer uses `InfraEvent` with typed `OTelResource`; `main.py` converts via `_sdk_to_infra_event()` after the processor chain.
+- **Standalone concurrency**: `_run_standalone()` uses `asyncio.TaskGroup` + `asyncio.Semaphore(OCTANTIS_WORKERS)`. Each event spawns a task; the semaphore caps parallel investigation workflows. `TaskGroup` propagates cancellation cleanly on shutdown.
+- **`OCTANTIS_WORKERS`**: default 20. Tune based on LLM call latency and desired throughput. Too high → rate-limit errors from the LLM provider. Too low → event backlog in queue.
 - **Slot validation is immediate**: `MCPClientManager.validate_slots()` runs at the start of `connect()`, before any network call. Zero MCPs or duplicate slots raise `SlotValidationError`.
 - **Retry clears degraded state**: If a connection fails then succeeds on retry, the server is removed from `_degraded_servers`.
 - **`MCPQueryRecord.datasource`** accepts `"promql"`, `"logql"`, `"k8s"`, `"docker"`, and `"aws"` — classified by tool name pattern in `_classify_datasource()`.

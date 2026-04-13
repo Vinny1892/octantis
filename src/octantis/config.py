@@ -139,6 +139,15 @@ class PipelineSettings(BaseSettings):
         return [p.strip() for p in self.benign_patterns.split(",") if p.strip()]
 
 
+class RuntimeSettings(BaseSettings):
+    """Controls the async runtime topology."""
+
+    model_config = SettingsConfigDict(env_prefix="OCTANTIS_", extra="ignore")
+
+    mode: str = "standalone"  # standalone | ingester | worker
+    workers: int = 20  # max concurrent investigation workflows (standalone mode)
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -163,6 +172,7 @@ class Settings(BaseSettings):
     slack: SlackSettings = Field(default_factory=SlackSettings)
     discord: DiscordSettings = Field(default_factory=DiscordSettings)
     pipeline: PipelineSettings = Field(default_factory=PipelineSettings)
+    runtime: RuntimeSettings = Field(default_factory=RuntimeSettings)
 
     @field_validator("log_level")
     @classmethod
