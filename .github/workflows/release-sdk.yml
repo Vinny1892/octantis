@@ -37,15 +37,16 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build SDK wheel + sdist
-        run: uv build --package octantis-plugin-sdk
+        working-directory: packages/octantis-plugin-sdk
+        run: uv build
 
       - name: Publish to PyPI (OIDC trusted publishing)
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          packages-dir: dist/
+          packages-dir: packages/octantis-plugin-sdk/dist/
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           body_path: RELEASE_NOTES.md
-          files: dist/*
+          files: packages/octantis-plugin-sdk/dist/*
