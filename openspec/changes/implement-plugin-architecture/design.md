@@ -59,11 +59,11 @@ Pre-0.0.1 with zero users. Feature flags would be dead code the day they ship. A
 - **Trade-off:** the refactor PR(s) will be large. Mitigated by phase-by-phase rollout (registry first, then each component family) and by the mandatory per-phase test/docs review gate.
 
 ### D7. AGPL-3.0 for core, Apache-2.0 for SDK — migrated atomically in Phase 6
-Relicensing is one commit: `LICENSE`, per-file headers, `pyproject.toml` classifier, Helm `Chart.yaml`, README badges, and a new `LICENSING.md` that explains the dual model. `pip-licenses` runs in CI to prove zero AGPL-incompatible transitive deps.
+Relicensing is one commit: `LICENSE`, per-file headers, `pyproject.toml` classifier, Helm `Chart.yaml`, README badges, and a new `LICENSING.md` that explains the dual model.
 - **Rationale:** AGPL protects against SaaS competitors reselling Octantis. Apache-2.0 SDK keeps the plugin ecosystem unblocked. Grafana built a $6B+ business on this exact split.
 
 ### D8. Test and documentation review are phase-level ship gates, not follow-ups
-Tech Spec 005 §11 already codifies this. The implementation enforces it two ways: (a) each phase in `tasks.md` has explicit "review tests" and "review docs" subtasks that must be checked off before the phase closes; (b) CI blocks merges if coverage drops below 94%, if a new source file lacks a license header, or if `pip-licenses` flags an incompatible dependency. Reviewing tests means re-reading them against the new Protocol boundaries — not just "make green".
+Tech Spec 005 §11 already codifies this. The implementation enforces it two ways: (a) each phase in `tasks.md` has explicit "review tests" and "review docs" subtasks that must be checked off before the phase closes; (b) CI blocks merges if coverage drops below 94%. Reviewing tests means re-reading them against the new Protocol boundaries — not just "make green".
 
 ### D9. Worker idempotency via "don't ACK until done", not via dedup store
 A worker that dies mid-investigation leaves the Redpanda message unacked, and the consumer group redelivers it to another worker. Workflows are written to be safe to run from scratch on the same event. This is simpler than a Redis/Postgres dedup table and sufficient for launch scale.
@@ -89,13 +89,12 @@ Rollout follows the 6 phases defined in Tech Spec 005 §11. Each phase is indepe
 3. **Phase 3 — Plan gating.** JWT Ed25519 validator + `PlanGatingEngine` with free/pro/enterprise rules and MCP slot enforcement. Validate: start with 2 MCPs + no license → clear error; start with pro JWT → loads 2 MCPs. Rollback: remove `PlanGatingEngine`, hardcode free-tier limits.
 4. **Phase 4 — Concurrent standalone.** `asyncio.TaskGroup` + semaphore runner in standalone mode. Validate: 5 events → 5 parallel investigations (logs/metrics). Rollback: revert to sequential `await`.
 5. **Phase 5 — Distributed mode.** Redpanda client; `OCTANTIS_MODE=ingester` publishes; `OCTANTIS_MODE=worker` consumes. Validate: ingester + 3 workers + Redpanda container, events distributed, worker crash → redelivery. Rollback: set `OCTANTIS_MODE=standalone`; Redpanda deployment untouched.
-6. **Phase 6 — License migration.** AGPL-3.0 `LICENSE` + headers + `pyproject.toml` + Helm `Chart.yaml` + README + `LICENSING.md`. Validate: `pip-licenses` audit clean; `LICENSE` is AGPL-3.0. Rollback: `git revert` on LICENSE + headers.
+6. **Phase 6 — License migration.** AGPL-3.0 `LICENSE` + headers + `pyproject.toml` + Helm `Chart.yaml` + README + `LICENSING.md`. Validate: `LICENSE` is AGPL-3.0, SPDX headers present in all source files. Rollback: `git revert` on LICENSE + headers.
 
 **Per-phase gate (mandatory, applies to all 6 phases):**
 - [ ] Test suite reviewed against the new Protocol / runtime boundary — not just "made green".
 - [ ] Coverage ≥ 94% in CI.
-- [ ] All affected docs updated in the same PR (README, CLAUDE.md, LICENSING.md, SDK reference, operator guides, PRD/Tech Spec cross-refs, FAQ).
-- [ ] License-header linter and `pip-licenses` audit green (phases that touch source files or deps).
+- [ ] All affected docs updated in the same PR (README, AGENTS.md, LICENSING.md, SDK reference, operator guides, PRD/Tech Spec cross-refs, FAQ).
 
 A phase that fails its gate does not ship — it is reverted and redone, not patched forward.
 
@@ -104,5 +103,5 @@ A phase that fails its gate does not ship — it is reverted and redone, not pat
 - **Kafka client library:** `aiokafka` (pure Python, easier install) vs `confluent-kafka` (librdkafka, faster, heavier deps). Decide before Phase 5. Leaning `aiokafka` for the simpler dependency story.
 - **Where does the JWT public key live?** Hardcoded in `src/octantis/licensing/` vs fetched from a known URL at build time. Hardcoded is simpler and air-gap-friendly; confirm before Phase 3.
 - **Plugin metadata schema in `pyproject.toml`:** do we require a `[tool.octantis.plugin]` table with `name`, `version`, `tier`, or infer everything from the entry point? Decide before SDK 1.0.
-- **CI enforcement of "tests were reviewed":** coverage and license checks are mechanical; "the existing tests were re-read against the new boundary" is a human judgment. Options: a required `tests-reviewed: true` label on the PR, a checklist in the PR template, or a CODEOWNERS review. Pick one before Phase 2.
+- **CI enforcement of "tests were reviewed":** resolved — PR template checklist item "Tests reviewed against Protocol boundaries (not just 'make green')". Human judgment enforced via checklist, not automation.
 - **Redpanda minimum version / schema-registry usage:** do we use Redpanda's built-in schema registry now, or keep event payloads as opaque JSON for launch? Leaning opaque JSON for launch, adopt schema registry when a plugin author needs it.

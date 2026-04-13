@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Investigator node: LLM-driven investigation via Grafana MCP tools.
 
 Replaces the old collector node. Instead of pre-fetching a fixed set of

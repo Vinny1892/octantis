@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """PlanGatingEngine — enforces plugin limits per tier.
 
 Tier rules (from Tech Spec 005):
@@ -11,14 +12,14 @@ external connections are made before tier enforcement.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import structlog
 from octantis_plugin_sdk import PluginTier
 
 if TYPE_CHECKING:
-    from octantis.plugins.registry import LoadedPlugin, PluginType
+    from octantis.plugins.registry import LoadedPlugin
 
 log = structlog.get_logger(__name__)
 
@@ -53,7 +54,7 @@ class PlanGatingEngine:
 
     tier: PluginTier
 
-    def enforce(self, plugins: list[LoadedPlugin]) -> None:  # noqa: C901
+    def enforce(self, plugins: list[LoadedPlugin]) -> None:
         """Validate that `plugins` respect the tier limits.
 
         Raises GatingViolationError with a remediation message on violation.

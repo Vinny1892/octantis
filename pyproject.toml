@@ -4,6 +4,12 @@ version = "0.1.0"
 description = "Intelligent infrastructure monitoring agent for EKS/K8s"
 readme = "README.md"
 requires-python = ">=3.12"
+license = { text = "AGPL-3.0-or-later" }
+classifiers = [
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+]
 dependencies = [
     "langgraph>=0.2.0",
     "langchain-anthropic>=0.3.0",
@@ -22,6 +28,7 @@ dependencies = [
     "pytest-cov>=7.1.0",
     "octantis-plugin-sdk",
     "pyjwt[crypto]>=2.9.0",
+    "aiokafka>=0.11.0",
 ]
 
 [tool.uv.sources]
@@ -78,3 +85,11 @@ known-first-party = ["octantis"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+addopts = "--cov=octantis --cov-report=term-missing --cov-fail-under=94"
+
+[tool.coverage.run]
+source = ["src/octantis"]
+omit = ["*/tests/*"]
+
+[tool.coverage.report]
+fail_under = 94

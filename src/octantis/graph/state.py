@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """LangGraph state definition for the Octantis workflow."""
 
 from typing import TypedDict

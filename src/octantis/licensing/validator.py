@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """JWT Ed25519 license validator — fully offline, no network calls.
 
 The public key lives at src/octantis/licensing/public_key.pem and is shipped
@@ -12,7 +13,6 @@ from __future__ import annotations
 
 import os
 from importlib.resources import files
-from pathlib import Path
 
 import jwt
 import structlog
@@ -66,11 +66,11 @@ def validate_license_jwt(token: str) -> PluginTier:
     raw_tier = payload.get("tier", "").lower()
     try:
         return PluginTier(raw_tier)
-    except ValueError:
+    except ValueError as exc:
         raise LicenseValidationError(
             f"unknown tier in license JWT: {raw_tier!r}. "
             f"Expected one of: {[t.value for t in PluginTier]}"
-        )
+        ) from exc
 
 
 def resolve_tier() -> PluginTier:

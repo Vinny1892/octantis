@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Built-in notifier plugin adapters (Slack, Discord).
 
 Each adapter wraps the existing notifier class (unchanged) and exposes it

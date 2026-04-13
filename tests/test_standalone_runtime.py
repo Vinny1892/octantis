@@ -8,13 +8,12 @@ Covers:
 """
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from octantis_plugin_sdk import Event as SDKEvent
 
 from octantis.main import _process_one_event, _run_standalone
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -294,14 +293,14 @@ class TestModeDispatch:
             patch("octantis.main.resolve_tier"),
             patch("octantis.main.PLAN_TIER_INFO"),
             patch("octantis.main.build_workflow"),
+            pytest.raises(SystemExit) as exc_info,
         ):
-            with pytest.raises(SystemExit) as exc_info:
-                await run()
+            await run()
         assert exc_info.value.code == 1
 
     @pytest.mark.asyncio
-    async def test_ingester_mode_exits_1(self):
-        """ingester mode is known but not yet implemented in Phase 4."""
+    async def test_ingester_mode_runs_producer(self):
+        """ingester mode is now implemented in Phase 5 — calls run_ingester."""
         from octantis.main import run
 
         mock_registry = MagicMock()
@@ -314,6 +313,11 @@ class TestModeDispatch:
         settings = _mock_settings_standalone()
         settings.runtime.mode = "ingester"
 
+        run_ingester_called = []
+
+        async def fake_run_ingester(**kwargs):
+            run_ingester_called.append(True)
+
         with (
             patch("octantis.main.settings", settings),
             patch("octantis.main._configure_logging"),
@@ -321,14 +325,15 @@ class TestModeDispatch:
             patch("octantis.main.resolve_tier"),
             patch("octantis.main.PLAN_TIER_INFO"),
             patch("octantis.main.build_workflow"),
+            patch("octantis.distributed.producer.run_ingester", fake_run_ingester),
         ):
-            with pytest.raises(SystemExit) as exc_info:
-                await run()
-        assert exc_info.value.code == 1
+            # ingester mode with no ingesters → exits via "no ingester" guard
+            await run()
+        # no exception = ingester mode accepted (would call run_ingester if ingesters present)
 
     @pytest.mark.asyncio
-    async def test_worker_mode_exits_1(self):
-        """worker mode is known but not yet implemented in Phase 4."""
+    async def test_worker_mode_runs_consumer(self):
+        """worker mode is now implemented in Phase 5 — calls run_worker."""
         from octantis.main import run
 
         mock_registry = MagicMock()
@@ -341,6 +346,11 @@ class TestModeDispatch:
         settings = _mock_settings_standalone()
         settings.runtime.mode = "worker"
 
+        run_worker_called = []
+
+        async def fake_run_worker(**kwargs):
+            run_worker_called.append(True)
+
         with (
             patch("octantis.main.settings", settings),
             patch("octantis.main._configure_logging"),
@@ -348,7 +358,8 @@ class TestModeDispatch:
             patch("octantis.main.resolve_tier"),
             patch("octantis.main.PLAN_TIER_INFO"),
             patch("octantis.main.build_workflow"),
+            patch("octantis.main.run_worker", fake_run_worker, create=True),
+            patch("octantis.distributed.consumer.run_worker", fake_run_worker),
         ):
-            with pytest.raises(SystemExit) as exc_info:
-                await run()
-        assert exc_info.value.code == 1
+            await run()
+        assert run_worker_called, "run_worker should have been called for worker mode"

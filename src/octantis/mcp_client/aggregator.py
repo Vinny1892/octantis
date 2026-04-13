@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Aggregator that presents N per-server MCPConnector plugins as a single facade.
 
 Exists because the LangGraph workflow expects a single manager-like object

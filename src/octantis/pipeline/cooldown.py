@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Fingerprint cooldown: deduplication to avoid re-investigating the same issue.
 
 Once an event fingerprint has been investigated, subsequent identical events

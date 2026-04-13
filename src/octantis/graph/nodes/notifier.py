@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Notifier node: sends formatted alerts to Slack and Discord."""
 
 import structlog

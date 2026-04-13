@@ -20,7 +20,10 @@ docker build -t octantis .    # build container image
 
 No linting or formatting tools are configured. Python 3.12+ required. Package manager is `uv` with hatchling build backend.
 
-**Runtime mode** (Phase 4): `OCTANTIS_MODE=standalone` (default) runs all workflows concurrently in one process, bounded by `OCTANTIS_WORKERS` (default 20). Modes `ingester` and `worker` (Redpanda-based) are Phase 5.
+**Runtime modes** (Phase 4–5):
+- `OCTANTIS_MODE=standalone` (default) — all workflows run concurrently in one process, bounded by `OCTANTIS_WORKERS` (default 20).
+- `OCTANTIS_MODE=ingester` — fan-in all Ingester plugins → serialize SDK Events as JSON → produce to Redpanda/Kafka (`OCTANTIS_REDPANDA_BROKERS` / `OCTANTIS_REDPANDA_TOPIC`).
+- `OCTANTIS_MODE=worker` — consume from Redpanda/Kafka → processor chain → LangGraph workflow; offset committed only on success (at-least-once delivery).
 
 ## Architecture & Data Flow
 
@@ -64,6 +67,9 @@ src/octantis/
 ├── mcp_client/
 │   ├── manager.py       # MCPClientManager — single-server connect + retry
 │   └── aggregator.py    # AggregatedMCPManager — facade over multiple per-server MCPConnectors
+├── distributed/
+│   ├── producer.py      # ingester-mode runner: fan-in Ingester plugins → Redpanda topic
+│   └── consumer.py      # worker-mode runner: Redpanda topic → processor chain → workflow
 ├── plugins/
 │   ├── registry.py      # PluginRegistry — entry-point discovery, fixed load order, lifecycle
 │   └── builtins/
@@ -153,3 +159,8 @@ for plugin authors lives in the separate Apache-2.0 package
 - **`MetricThresholdRule`** recognizes `node_cpu`, `node_memory`, `node_filesystem`, `node_network` prefixes alongside standard pod-level metrics.
 - **`config.py`**: `settings = Settings()` is a module-level singleton, instantiated at import time.
 - **Cooldown sliding window**: `last_seen` is updated even on suppressed events, so persistent issues renew the cooldown.
+- **Distributed mode — SDK Event serialisation boundary**: `producer.py` serialises the SDK Event to plain JSON (`_sdk_event_to_dict`). `consumer.py` deserialises back to SDK Event (`_dict_to_sdk_event`), then runs the same processor chain as standalone. The `raw_payload` field defaults to `{}` on deserialisation.
+- **At-least-once delivery**: The worker commits the Kafka offset **after** successful processing. A crash between processing and commit causes redelivery. MCP queries and LLM nodes are safe to re-run; the notifier will send a duplicate Slack/Discord message on redelivery. Deduplication (via Storage plugin) is deferred to a future milestone.
+- **Exponential backoff**: Both producer and consumer use `2^(attempt-1)` seconds (capped at 60s). Both exit non-zero after `OCTANTIS_REDPANDA_CONNECT_MAX_ATTEMPTS` (default 10) failures. Distinct from `MCP_RETRY_*` settings.
+- **Corrupt Kafka messages**: A message that fails deserialisation (missing required fields) is committed immediately to avoid a stuck consumer. An error is logged but the message is skipped, not requeued.
+- **`RedpandaSettings`** uses `env_prefix="OCTANTIS_REDPANDA_"`. Key env vars: `OCTANTIS_REDPANDA_BROKERS`, `OCTANTIS_REDPANDA_TOPIC`, `OCTANTIS_REDPANDA_CONSUMER_GROUP`.

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Planner node: uses LLM to generate a concrete remediation action plan."""
 
 import structlog

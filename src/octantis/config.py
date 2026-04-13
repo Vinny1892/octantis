@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Application configuration via Pydantic BaseSettings."""
 
 from typing import Literal
@@ -148,6 +149,17 @@ class RuntimeSettings(BaseSettings):
     workers: int = 20  # max concurrent investigation workflows (standalone mode)
 
 
+class RedpandaSettings(BaseSettings):
+    """Connection settings for Redpanda / Kafka (Phase 5 distributed mode)."""
+
+    model_config = SettingsConfigDict(env_prefix="OCTANTIS_REDPANDA_", extra="ignore")
+
+    brokers: str = "localhost:9092"
+    topic: str = "octantis.events"
+    consumer_group: str = "octantis-workers"
+    connect_max_attempts: int = 10  # exit-non-zero after this many failed connect retries
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -173,6 +185,7 @@ class Settings(BaseSettings):
     discord: DiscordSettings = Field(default_factory=DiscordSettings)
     pipeline: PipelineSettings = Field(default_factory=PipelineSettings)
     runtime: RuntimeSettings = Field(default_factory=RuntimeSettings)
+    redpanda: RedpandaSettings = Field(default_factory=RedpandaSettings)
 
     @field_validator("log_level")
     @classmethod

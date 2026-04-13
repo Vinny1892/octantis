@@ -8,5 +8,8 @@ dependencies:
 - name: kube-prometheus-stack
   repository: https://prometheus-community.github.io/helm-charts
   version: 83.4.0
-digest: sha256:02ea7e6503a406c94c507c14ca8e20c6441abc2711d206b5cd839147b90b0612
-generated: "2026-04-10T16:22:03.501561635-04:00"
+- name: redpanda
+  repository: https://charts.redpanda.com/
+  version: 5.9.31
+digest: sha256:7ae9ec5e3b4b85e85c835fadb9c16b1287df4202491ca43c12cdf7fbbd178348
+generated: "2026-04-12T23:46:33.186184529-04:00"

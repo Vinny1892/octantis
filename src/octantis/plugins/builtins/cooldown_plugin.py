@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Built-in `fingerprint-cooldown` plugin adapter.
 
 Wraps `octantis.pipeline.cooldown.FingerprintCooldown` in the SDK `Processor`

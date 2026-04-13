@@ -4,6 +4,8 @@
 [![Build mcp-grafana](https://github.com/Vinny1892/octantis/actions/workflows/mcp-grafana.yml/badge.svg)](https://github.com/Vinny1892/octantis/actions/workflows/mcp-grafana.yml)
 [![GHCR](https://img.shields.io/badge/ghcr.io-octantis-blue?logo=github)](https://github.com/Vinny1892/octantis/pkgs/container/octantis)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
+[![SDK License: Apache-2.0](https://img.shields.io/badge/SDK_License-Apache--2.0-green.svg)](packages/octantis-plugin-sdk/LICENSE)
 
 Intelligent infrastructure monitoring agent for **Kubernetes, Docker, and AWS**. Receives metrics and logs via OTLP, uses an LLM to autonomously investigate and classify incidents, and notifies Slack/Discord with a concrete remediation plan.
 
@@ -150,3 +152,4 @@ See [CONTRIBUTING.md](.github/CONTRIBUTING.md).
 - [Filter Pipeline](.github/PIPELINE.md) — event ingestion and pre-filtering
 - [LangGraph Agent](.github/AGENT.md) — investigation, analysis, planning, and notification
 - [Onboarding](.github/ONBOARDING.md) — setup guide and code map
+- [Licensing](LICENSING.md) — dual-license model (AGPL-3.0 core, Apache-2.0 SDK), plan tiers, and AGPL FAQ

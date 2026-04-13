@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Per-server MCP connector plugins (Fork B=1: one plugin per server, SRP).
 
 Each plugin wraps exactly one MCP server (grafana, k8s, docker, aws) and

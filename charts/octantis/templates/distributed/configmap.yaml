@@ -1,0 +1,14 @@
+{{- if .Values.distributed.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "octantis.fullname" . }}-distributed
+  labels:
+    {{- include "octantis.labels" . | nindent 4 }}
+    app.kubernetes.io/component: distributed
+data:
+  OCTANTIS_REDPANDA_BROKERS: {{ include "octantis.redpandaBrokers" . | quote }}
+  OCTANTIS_REDPANDA_TOPIC: {{ .Values.distributed.topic | quote }}
+  OCTANTIS_REDPANDA_CONSUMER_GROUP: {{ .Values.distributed.consumerGroup | quote }}
+  OCTANTIS_REDPANDA_CONNECT_MAX_ATTEMPTS: {{ .Values.distributed.connectMaxAttempts | quote }}
+{{- end }}

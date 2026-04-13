@@ -255,3 +255,61 @@ kubePrometheusStack:
     enabled: true
   alertmanager:
     enabled: true
+
+# Distributed mode (ingester + worker, requires Redpanda)
+# When enabled=true, the standalone Deployment is replaced by separate
+# ingester and worker Deployments backed by a Redpanda Kafka topic.
+distributed:
+  enabled: false
+
+  # Kafka/Redpanda connection — ignored when redpanda.enabled=true (auto-wired)
+  brokers: ""
+  topic: "octantis.events"
+  consumerGroup: "octantis-workers"
+  connectMaxAttempts: 10
+
+  ingester:
+    replicaCount: 1
+    resources:
+      requests:
+        cpu: 200m
+        memory: 256Mi
+      limits:
+        cpu: "1"
+        memory: 512Mi
+
+  worker:
+    replicaCount: 2
+    resources:
+      requests:
+        cpu: 500m
+        memory: 512Mi
+      limits:
+        cpu: "2"
+        memory: 1Gi
+
+# Redpanda subchart (optional — set redpanda.enabled=true to deploy a
+# single-broker Redpanda alongside Octantis for development / staging)
+redpanda:
+  enabled: false
+  # Minimal single-broker config for dev/staging; tune for production.
+  statefulset:
+    replicas: 1
+  resources:
+    cpu:
+      cores: 1
+    memory:
+      container:
+        max: "2Gi"
+  storage:
+    persistentVolume:
+      size: "20Gi"
+  listeners:
+    kafka:
+      port: 9092
+  config:
+    cluster:
+      auto_create_topics_enabled: true
+  # Disable optional components not needed for Octantis
+  console:
+    enabled: false

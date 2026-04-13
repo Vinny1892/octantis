@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Discord notifier using webhook embeds."""
 
 from typing import Any

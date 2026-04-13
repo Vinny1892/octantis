@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Built-in `trigger-filter` plugin adapter.
 
 Wraps `octantis.pipeline.trigger_filter.TriggerFilter` in the SDK `Processor`

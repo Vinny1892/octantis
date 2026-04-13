@@ -1,46 +1,44 @@
-{{- if not .Values.distributed.enabled }}
+{{- if .Values.distributed.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "octantis.fullname" . }}
+  name: {{ include "octantis.fullname" . }}-worker
   labels:
     {{- include "octantis.labels" . | nindent 4 }}
-    app.kubernetes.io/component: octantis
+    app.kubernetes.io/component: worker
 spec:
-  replicas: {{ .Values.octantis.replicaCount }}
+  replicas: {{ .Values.distributed.worker.replicaCount }}
   selector:
     matchLabels:
       {{- include "octantis.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: octantis
+      app.kubernetes.io/component: worker
   template:
     metadata:
       labels:
         {{- include "octantis.selectorLabels" . | nindent 8 }}
-        app.kubernetes.io/component: octantis
+        app.kubernetes.io/component: worker
       annotations:
-        {{- toYaml .Values.octantis.podAnnotations | nindent 8 }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ .Values.octantis.metrics.port | quote }}
+        prometheus.io/path: "/metrics"
     spec:
       serviceAccountName: {{ include "octantis.serviceAccountName" . }}
       containers:
-        - name: octantis
+        - name: worker
           image: "{{ .Values.octantis.image.repository }}:{{ include "octantis.imageTag" . }}"
           imagePullPolicy: {{ .Values.octantis.image.pullPolicy }}
           ports:
-            - name: otlp-grpc
-              containerPort: {{ .Values.octantis.otlp.grpc.port }}
-              protocol: TCP
-            - name: otlp-http
-              containerPort: {{ .Values.octantis.otlp.http.port }}
-              protocol: TCP
             - name: metrics
               containerPort: {{ .Values.octantis.metrics.port }}
               protocol: TCP
           envFrom:
             - configMapRef:
                 name: {{ include "octantis.fullname" . }}
+            - configMapRef:
+                name: {{ include "octantis.fullname" . }}-distributed
           env:
             - name: OCTANTIS_MODE
-              value: standalone
+              value: worker
             {{- range $key, $secret := .Values.secrets }}
             {{- if $secret.existingSecret }}
             - name: {{ $secret.key }}
@@ -63,15 +61,17 @@ spec:
             {{- end }}
             {{- end }}
           resources:
-            {{- toYaml .Values.octantis.resources | nindent 12 }}
+            {{- toYaml .Values.distributed.worker.resources | nindent 12 }}
           livenessProbe:
-            tcpSocket:
-              port: otlp-grpc
-            initialDelaySeconds: 10
+            httpGet:
+              path: /metrics
+              port: metrics
+            initialDelaySeconds: 15
             periodSeconds: 30
           readinessProbe:
-            tcpSocket:
-              port: otlp-grpc
-            initialDelaySeconds: 5
+            httpGet:
+              path: /metrics
+              port: metrics
+            initialDelaySeconds: 10
             periodSeconds: 10
 {{- end }}

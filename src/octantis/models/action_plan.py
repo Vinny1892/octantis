@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Action plan models.
 
 Canonical definitions live in `octantis_plugin_sdk` (Apache-2.0 stable

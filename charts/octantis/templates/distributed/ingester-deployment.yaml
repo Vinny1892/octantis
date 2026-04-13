@@ -1,28 +1,30 @@
-{{- if not .Values.distributed.enabled }}
+{{- if .Values.distributed.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "octantis.fullname" . }}
+  name: {{ include "octantis.fullname" . }}-ingester
   labels:
     {{- include "octantis.labels" . | nindent 4 }}
-    app.kubernetes.io/component: octantis
+    app.kubernetes.io/component: ingester
 spec:
-  replicas: {{ .Values.octantis.replicaCount }}
+  replicas: {{ .Values.distributed.ingester.replicaCount }}
   selector:
     matchLabels:
       {{- include "octantis.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: octantis
+      app.kubernetes.io/component: ingester
   template:
     metadata:
       labels:
         {{- include "octantis.selectorLabels" . | nindent 8 }}
-        app.kubernetes.io/component: octantis
+        app.kubernetes.io/component: ingester
       annotations:
-        {{- toYaml .Values.octantis.podAnnotations | nindent 8 }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ .Values.octantis.metrics.port | quote }}
+        prometheus.io/path: "/metrics"
     spec:
       serviceAccountName: {{ include "octantis.serviceAccountName" . }}
       containers:
-        - name: octantis
+        - name: ingester
           image: "{{ .Values.octantis.image.repository }}:{{ include "octantis.imageTag" . }}"
           imagePullPolicy: {{ .Values.octantis.image.pullPolicy }}
           ports:
@@ -38,9 +40,11 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ include "octantis.fullname" . }}
+            - configMapRef:
+                name: {{ include "octantis.fullname" . }}-distributed
           env:
             - name: OCTANTIS_MODE
-              value: standalone
+              value: ingester
             {{- range $key, $secret := .Values.secrets }}
             {{- if $secret.existingSecret }}
             - name: {{ $secret.key }}
@@ -63,7 +67,7 @@ spec:
             {{- end }}
             {{- end }}
           resources:
-            {{- toYaml .Values.octantis.resources | nindent 12 }}
+            {{- toYaml .Values.distributed.ingester.resources | nindent 12 }}
           livenessProbe:
             tcpSocket:
               port: otlp-grpc

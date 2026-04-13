@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """OTLP payload parser — converts Protobuf and JSON payloads to SDK Event.
 
 All protobuf imports are deferred inside methods so this module is importable
@@ -6,6 +7,7 @@ without triggering opentelemetry-proto side effects at import time.
 
 from __future__ import annotations
 
+import contextlib
 import uuid
 from typing import Any
 
@@ -150,10 +152,8 @@ class OTLPParser:
                         )
 
         event_type = "metric" if metrics else "unknown"
-        try:
+        with contextlib.suppress(Exception):
             raw_payload = MessageToDict(request)
-        except Exception:
-            pass
 
         return SDKEvent(
             event_id=str(uuid.uuid4()),
@@ -193,10 +193,8 @@ class OTLPParser:
                     )
 
         event_type = "log" if logs else "unknown"
-        try:
+        with contextlib.suppress(Exception):
             raw_payload = MessageToDict(request)
-        except Exception:
-            pass
 
         return SDKEvent(
             event_id=str(uuid.uuid4()),

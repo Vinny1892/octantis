@@ -1,9 +1,11 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Async gRPC server implementing OTLP MetricsService, LogsService, TraceService."""
 
 import asyncio
 
 import grpc
 import structlog
+from octantis_plugin_sdk import Event as SDKEvent
 from opentelemetry.proto.collector.logs.v1.logs_service_pb2 import (
     ExportLogsServiceRequest,
     ExportLogsServiceResponse,
@@ -27,8 +29,6 @@ from opentelemetry.proto.collector.trace.v1.trace_service_pb2_grpc import (
     TraceServiceServicer,
     add_TraceServiceServicer_to_server,
 )
-
-from octantis_plugin_sdk import Event as SDKEvent
 
 from octantis.receivers.parser import OTLPParser
 

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Per-transport OTLP ingester plugins (Fork C=1: one plugin per transport, SRP).
 
 Each plugin owns exactly one transport (gRPC or HTTP), its own parser and

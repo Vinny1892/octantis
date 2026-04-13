@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """MCPClientManager — registry-based MCP server management with slot validation."""
 
 from __future__ import annotations

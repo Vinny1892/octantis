@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from octantis_plugin_sdk import Event, Processor
 
 from octantis.plugins.builtins.trigger_filter_plugin import TriggerFilterPlugin

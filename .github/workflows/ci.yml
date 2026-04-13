@@ -40,7 +40,7 @@ jobs:
           enable-cache: true
 
       - run: uv sync --frozen
-      - run: uv run pytest --tb=short -q
+      - run: uv run pytest --tb=short -q --cov=octantis --cov-fail-under=94
 
   helm:
     name: Helm Chart Validation

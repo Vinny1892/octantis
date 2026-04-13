@@ -17,7 +17,6 @@ from octantis_plugin_sdk import PluginTier
 from octantis.licensing.gating import GatingViolationError, PlanGatingEngine
 from octantis.licensing.validator import LicenseValidationError, validate_license_jwt
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -79,16 +78,14 @@ class TestValidateLicenseJWT:
     def test_expired_jwt_raises(self, keypair):
         priv_pem, pub_pem = keypair
         token = _make_token(priv_pem, expired=True)
-        with _patch_public_key(pub_pem):
-            with pytest.raises(LicenseValidationError, match="expired"):
-                validate_license_jwt(token)
+        with _patch_public_key(pub_pem), pytest.raises(LicenseValidationError, match="expired"):
+            validate_license_jwt(token)
 
     def test_wrong_issuer_raises(self, keypair):
         priv_pem, pub_pem = keypair
         token = _make_token(priv_pem, bad_iss=True)
-        with _patch_public_key(pub_pem):
-            with pytest.raises(LicenseValidationError, match="issuer"):
-                validate_license_jwt(token)
+        with _patch_public_key(pub_pem), pytest.raises(LicenseValidationError, match="issuer"):
+            validate_license_jwt(token)
 
     def test_tampered_signature_raises(self, keypair):
         priv_pem, pub_pem = keypair
@@ -97,9 +94,8 @@ class TestValidateLicenseJWT:
         # but guaranteed wrong bytes)
         header, payload_seg, _ = token.rsplit(".", 2)
         tampered = f"{header}.{payload_seg}.{'A' * 88}"
-        with _patch_public_key(pub_pem):
-            with pytest.raises(LicenseValidationError):
-                validate_license_jwt(tampered)
+        with _patch_public_key(pub_pem), pytest.raises(LicenseValidationError):
+            validate_license_jwt(tampered)
 
     def test_wrong_key_raises(self, keypair):
         priv_pem, _ = keypair
@@ -109,22 +105,22 @@ class TestValidateLicenseJWT:
             Encoding.PEM, PublicFormat.SubjectPublicKeyInfo
         )
         token = _make_token(priv_pem)
-        with patch("octantis.licensing.validator._PUBLIC_KEY_PEM", other_pub):
-            with pytest.raises(LicenseValidationError):
-                validate_license_jwt(token)
+        with (
+            patch("octantis.licensing.validator._PUBLIC_KEY_PEM", other_pub),
+            pytest.raises(LicenseValidationError),
+        ):
+            validate_license_jwt(token)
 
     def test_malformed_token_raises(self, keypair):
         _, pub_pem = keypair
-        with _patch_public_key(pub_pem):
-            with pytest.raises(LicenseValidationError, match="malformed"):
-                validate_license_jwt("not.a.jwt")
+        with _patch_public_key(pub_pem), pytest.raises(LicenseValidationError, match="malformed"):
+            validate_license_jwt("not.a.jwt")
 
     def test_unknown_tier_raises(self, keypair):
         priv_pem, pub_pem = keypair
         token = _make_token(priv_pem, tier="diamond")
-        with _patch_public_key(pub_pem):
-            with pytest.raises(LicenseValidationError, match="unknown tier"):
-                validate_license_jwt(token)
+        with _patch_public_key(pub_pem), pytest.raises(LicenseValidationError, match="unknown tier"):
+            validate_license_jwt(token)
 
     def test_missing_tier_claim_raises(self, keypair):
         priv_pem, pub_pem = keypair
@@ -134,9 +130,8 @@ class TestValidateLicenseJWT:
             priv_pem,
             algorithm="EdDSA",
         )
-        with _patch_public_key(pub_pem):
-            with pytest.raises(LicenseValidationError):
-                validate_license_jwt(token)
+        with _patch_public_key(pub_pem), pytest.raises(LicenseValidationError):
+            validate_license_jwt(token)
 
 
 # ---------------------------------------------------------------------------

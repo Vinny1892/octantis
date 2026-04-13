@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """OTLPReceiver — orchestrates gRPC + HTTP servers and the event queue."""
 
 import asyncio

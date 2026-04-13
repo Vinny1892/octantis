@@ -175,6 +175,7 @@ class TestEvents:
             await asyncio.sleep(0.01)
             ing._stopped = True
 
-        asyncio.create_task(_stop_after_first())
+        stop_task = asyncio.create_task(_stop_after_first())
+        assert stop_task is not None
         items = [e async for e in ing.events()]
         assert items == [0, 1, 2, 3]

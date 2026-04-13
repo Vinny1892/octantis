@@ -141,6 +141,17 @@ ServiceAccount name for K8s MCP.
 {{- end }}
 
 {{/*
+Redpanda bootstrap brokers: in-chart subchart takes precedence over external brokers.
+*/}}
+{{- define "octantis.redpandaBrokers" -}}
+{{- if .Values.redpanda.enabled -}}
+{{- printf "%s-redpanda:9092" (include "octantis.fullname" .) -}}
+{{- else -}}
+{{- .Values.distributed.brokers -}}
+{{- end -}}
+{{- end }}
+
+{{/*
 Grafana URL for Grafana MCP: custom URL takes precedence, then kube-prometheus-stack auto-wire, then default.
 */}}
 {{- define "octantis.grafanaMcpGrafanaUrl" -}}

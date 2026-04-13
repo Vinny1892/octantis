@@ -9,12 +9,10 @@ import pytest
 
 from octantis.plugins.registry import (
     DuplicatePluginError,
-    LoadedPlugin,
     PluginLoadError,
     PluginRegistry,
     PluginType,
 )
-
 
 # ---- plugin test doubles ----------------------------------------------------
 
@@ -224,7 +222,8 @@ def test_setup_called_in_load_order(monkeypatch):
         async def start(self): ...
         async def stop(self): ...
         async def events(self):
-            if False: yield None
+            if False:
+                yield None
 
     class M:
         def setup(self, c): order.append("M")
@@ -257,7 +256,8 @@ def test_teardown_in_reverse_load_order(monkeypatch):
         async def start(self): ...
         async def stop(self): ...
         async def events(self):
-            if False: yield None
+            if False:
+                yield None
 
     class M:
         def setup(self, c): ...

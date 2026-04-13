@@ -12,7 +12,6 @@ import pytest
 
 from octantis.main import _build_notifier_config, _build_pipeline_config, _configure_logging, run
 
-
 # ─── config helpers ──────────────────────────────────────────────────────
 
 
@@ -410,12 +409,17 @@ async def test_run_stop_event_breaks_loop():
             if lp.name == "trigger-filter":
                 original_process = lp.instance.process
 
-                async def process_with_stop(evt):
-                    import signal as sig_mod
+                def _make_process_with_stop(proc):
+                    async def _wrapped(evt):
+                        import signal as sig_mod
 
-                    if sig_mod.SIGINT in signal_handlers:
-                        signal_handlers[sig_mod.SIGINT]()
-                    return await original_process(evt)
+                        if sig_mod.SIGINT in signal_handlers:
+                            signal_handlers[sig_mod.SIGINT]()
+                        return await proc(evt)
+
+                    return _wrapped
+
+                process_with_stop = _make_process_with_stop(original_process)
 
                 lp.instance.process = process_with_stop
                 break

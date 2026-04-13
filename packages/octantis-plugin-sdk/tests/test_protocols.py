@@ -8,11 +8,11 @@ from typing import Any
 from octantis_plugin_sdk import (
     ActionPlan,
     Event,
+    Ingester,
     InvestigationResult,
     MCPConnector,
     Notifier,
     Processor,
-    Ingester,
     SeverityAnalysis,
     Storage,
     Tool,

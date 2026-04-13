@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Environment Detector: promotes base OTelResource to typed subclass.
 
 Inspects OTLP resource attributes (from the extra dict) or explicit

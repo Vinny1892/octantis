@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 from .action_plan import ActionPlan, ActionStep
 from .analysis import Severity, SeverityAnalysis
 from .event import (

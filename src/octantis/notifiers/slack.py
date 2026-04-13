@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Slack notifier using Block Kit."""
 
 from typing import Any

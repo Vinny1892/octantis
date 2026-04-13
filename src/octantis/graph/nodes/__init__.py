@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 from .analyzer import analyzer_node
 from .investigator import investigate_node
 from .notifier import notifier_node

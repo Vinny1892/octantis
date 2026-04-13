@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Async HTTP server implementing OTLP/HTTP endpoints."""
 
 import asyncio
@@ -6,14 +7,13 @@ from typing import Any
 
 import structlog
 from aiohttp import web
+from octantis_plugin_sdk import Event as SDKEvent
 from opentelemetry.proto.collector.logs.v1.logs_service_pb2 import (
     ExportLogsServiceRequest,
 )
 from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import (
     ExportMetricsServiceRequest,
 )
-
-from octantis_plugin_sdk import Event as SDKEvent
 
 from octantis.receivers.parser import OTLPParser
 

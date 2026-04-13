@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Plugin registry — entry-point discovery, fixed load order, lifecycle logging.
 
 Contract with plugin authors lives in `octantis_plugin_sdk`. The registry
@@ -125,13 +126,13 @@ class PluginRegistry:
         source = _ep_dist_name(ep)
         try:
             cls = ep.load()
-        except Exception as exc:  # noqa: BLE001 — re-raised as PluginLoadError
+        except Exception as exc:
             raise PluginLoadError(
                 f"failed to import plugin {ep.name!r} from {source}: {exc}"
             ) from exc
         try:
             instance = cls()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise PluginLoadError(
                 f"failed to instantiate plugin {ep.name!r} from {source}: {exc}"
             ) from exc
@@ -189,7 +190,7 @@ class PluginRegistry:
             t0 = time.perf_counter()
             try:
                 plugin.instance.setup(per_plugin)
-            except Exception as exc:  # noqa: BLE001 — propagate after logging
+            except Exception as exc:
                 logger.error(
                     "plugin.setup_failed",
                     plugin_name=plugin.name,
@@ -221,7 +222,7 @@ class PluginRegistry:
             t0 = time.perf_counter()
             try:
                 plugin.instance.teardown()
-            except Exception as exc:  # noqa: BLE001 — swallow per contract
+            except Exception as exc:
                 logger.error(
                     "plugin.teardown_failed",
                     plugin_name=plugin.name,

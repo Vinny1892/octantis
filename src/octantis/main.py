@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Octantis main entrypoint."""
 
 import asyncio
@@ -23,7 +24,6 @@ from octantis.pipeline.environment_detector import EnvironmentDetector
 from octantis.plugins.registry import PluginRegistry, PluginType
 
 _VALID_MODES = frozenset({"standalone", "ingester", "worker"})
-_IMPLEMENTED_MODES = frozenset({"standalone"})
 
 log = structlog.get_logger(__name__)
 
@@ -119,7 +119,7 @@ def _sdk_to_infra_event(sdk_event: SDKEvent) -> InfraEvent:
             MetricDataPoint(name=m["name"], value=m["value"])
             for m in sdk_event.metrics
         ],
-        logs=[LogRecord(body=l["body"]) for l in sdk_event.logs],
+        logs=[LogRecord(body=log_rec["body"]) for log_rec in sdk_event.logs],
         raw_payload=sdk_event.raw_payload,
     )
 
@@ -320,25 +320,36 @@ async def run() -> None:
                 remediation=f"Set OCTANTIS_MODE to one of: {sorted(_VALID_MODES)}",
             )
             sys.exit(1)
-        if mode not in _IMPLEMENTED_MODES:
-            log.error(
-                "octantis.mode_not_implemented",
-                mode=mode,
-                remediation="ingester/worker modes are implemented in Phase 5 (requires Redpanda)",
+        if mode == "standalone":
+            if not ingester_instances:
+                log.error("octantis.no_ingester")
+                return
+            await _run_standalone(
+                ingester_instances=ingester_instances,
+                processors=processors,
+                detector=detector,
+                workflow=workflow,
+                stop_event=stop_event,
             )
-            sys.exit(1)
+        elif mode == "ingester":
+            from octantis.distributed.producer import run_ingester
 
-        if not ingester_instances:
-            log.error("octantis.no_ingester")
-            return
+            if not ingester_instances:
+                log.error("octantis.no_ingester")
+                return
+            await run_ingester(
+                ingester_instances=ingester_instances,
+                stop_event=stop_event,
+            )
+        elif mode == "worker":
+            from octantis.distributed.consumer import run_worker
 
-        await _run_standalone(
-            ingester_instances=ingester_instances,
-            processors=processors,
-            detector=detector,
-            workflow=workflow,
-            stop_event=stop_event,
-        )
+            await run_worker(
+                processors=processors,
+                detector=detector,
+                workflow=workflow,
+                stop_event=stop_event,
+            )
     finally:
         for ing in ingester_instances:
             await ing.stop()

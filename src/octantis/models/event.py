@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Event models for raw and enriched infrastructure events."""
 
 from datetime import UTC, datetime

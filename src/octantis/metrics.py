@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Internal Prometheus metrics for Octantis."""
 
 from prometheus_client import Counter, Gauge, Histogram, start_http_server
@@ -76,6 +77,28 @@ PLAN_GATING_VIOLATIONS = Counter(
     "octantis_plan_gating_violations_total",
     "Number of plugin types blocked by plan gating since startup",
     ["plugin_type"],  # mcp, notifiers, ui
+)
+
+
+# Distributed runtime (ingester + worker modes)
+DISTRIBUTED_PUBLISHED = Counter(
+    "octantis_distributed_published_total",
+    "Events published to the Redpanda/Kafka topic by the ingester runner",
+)
+
+DISTRIBUTED_CONSUMED = Counter(
+    "octantis_distributed_consumed_total",
+    "Events successfully processed and committed by the worker runner",
+)
+
+DISTRIBUTED_REDELIVERED = Counter(
+    "octantis_distributed_redelivered_total",
+    "Events that failed processing and will be redelivered (offset not committed)",
+)
+
+DISTRIBUTED_CONSUMER_LAG = Gauge(
+    "octantis_distributed_consumer_lag",
+    "Approximate number of unconsumed messages in the Redpanda/Kafka topic",
 )
 
 

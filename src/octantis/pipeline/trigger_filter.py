@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Trigger filter: rule-based gate that decides if an event warrants investigation.
 
 Evaluates cheap, deterministic rules to decide if an event contains enough

@@ -1,0 +1,23 @@
+{{- if .Values.distributed.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "octantis.fullname" . }}-ingester
+  labels:
+    {{- include "octantis.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ingester
+spec:
+  type: ClusterIP
+  ports:
+    - name: otlp-grpc
+      port: {{ .Values.octantis.otlp.grpc.port }}
+      targetPort: otlp-grpc
+      protocol: TCP
+    - name: otlp-http
+      port: {{ .Values.octantis.otlp.http.port }}
+      targetPort: otlp-http
+      protocol: TCP
+  selector:
+    {{- include "octantis.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: ingester
+{{- end }}
