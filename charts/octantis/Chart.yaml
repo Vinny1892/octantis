@@ -11,6 +11,7 @@ maintainers:
   - name: Vinicius Espindola
 annotations:
   artifacthub.io/license: AGPL-3.0-or-later
+  artifacthub.io/repositoryID: b7e33f3c-edda-47ce-8e51-b724315ab3ef
   artifacthub.io/changes: |
     - kind: added
       description: Initial chart release with modular deployment support
