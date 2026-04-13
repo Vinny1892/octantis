@@ -70,11 +70,11 @@
 - [x] 5.5 Add env vars `OCTANTIS_REDPANDA_BROKERS`, `OCTANTIS_REDPANDA_TOPIC`, `OCTANTIS_REDPANDA_CONSUMER_GROUP` (`RedpandaSettings` in config.py)
 - [x] 5.6 Export distributed-mode metrics: `octantis_distributed_published_total`, `octantis_distributed_consumed_total`, `octantis_distributed_redelivered_total`, `octantis_distributed_consumer_lag`
 - [x] 5.7 Add Redpanda as an optional Helm subchart (`charts.redpanda.com`, condition `redpanda.enabled`); ingester/worker Deployments + distributed ConfigMap + ingester Service in `charts/octantis/templates/distributed/`; standalone Deployment guarded by `{{- if not .Values.distributed.enabled }}`
-- [ ] 5.8 Integration tests with a real Redpanda container (testcontainers): end-to-end publish/consume, worker crash → redelivery, idempotency
+- [x] 5.8 Integration tests with a real Redpanda container (testcontainers): end-to-end publish/consume, worker crash → redelivery, idempotency
 - [x] 5.9 Workflow idempotency review: investigator (read-only MCP), analyzer (LLM classify), planner (LLM plan) are safe; notifier sends duplicates on redelivery — acceptable for at-least-once; deduplication deferred to Storage plugin (Phase 5.8/Storage)
-- [ ] 5.10 **Phase 5 test review**: confirm integration tests cover redelivery, consumer-group rebalance, and idempotency — not just happy path
+- [x] 5.10 **Phase 5 test review**: confirm integration tests cover redelivery, consumer-group rebalance, and idempotency — not just happy path
 - [x] 5.11 **Phase 5 docs**: distributed deployment guide, env vars, Redpanda sizing, idempotency notes added to AGENTS.md
-- [ ] 5.12 **Phase 5 gate**: coverage ≥ 94%, CI green, integration tests green, docs review — only then close the phase
+- [x] 5.12 **Phase 5 gate**: coverage ≥ 94%, CI green, integration tests green, docs review — only then close the phase
 
 ## 6. Phase 6 — License migration to AGPL-3.0
 
